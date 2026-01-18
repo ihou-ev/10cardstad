@@ -85,7 +85,7 @@ export function App() {
         console.log("Room updated:", updatedRoom.status, updatedRoom.game_state ? "has game_state" : "no game_state");
 
         // Room updated
-        if (updatedRoom.status === "playing" && updatedRoom.game_state) {
+        if ((updatedRoom.status === "playing" || updatedRoom.status === "finished") && updatedRoom.game_state) {
           const gameState = JSON.parse(
             typeof updatedRoom.game_state === "string"
               ? updatedRoom.game_state
