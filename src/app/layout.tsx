@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "10カードスタッド",
-  description: "5人のプレイヤーが10枚のカードから最強の5枚を選んで勝負するポーカーゲーム",
+  title: "10カードスタッドAOF",
+  description: "2〜5人のプレイヤーが10枚のカードから最強の5枚を選んで勝負するポーカーゲーム",
 };
 
 export default function RootLayout({

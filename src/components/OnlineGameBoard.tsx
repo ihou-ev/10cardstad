@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { GameState } from "@/lib/game";
 import { PlayerArea } from "./PlayerArea";
 import { cn } from "@/lib/utils";
+import { playCardFlipSound, playWinnerSound } from "@/lib/sounds";
 
 interface OnlineGameBoardProps {
   gameState: GameState;
@@ -30,12 +32,39 @@ export function OnlineGameBoard({
 
   const isMyTurn = waitingPlayerIds.has(mySlot);
 
+  // Track previous state for sound effects
+  const prevRevealCount = useRef(gameState.revealHistory.length);
+  const prevPhase = useRef(gameState.phase);
+
+  // Play sound when cards are revealed
+  useEffect(() => {
+    const currentRevealCount = gameState.revealHistory.reduce(
+      (acc, event) => acc + event.cards.length,
+      0
+    );
+    const prevCount = prevRevealCount.current;
+
+    if (currentRevealCount > prevCount) {
+      playCardFlipSound();
+    }
+
+    prevRevealCount.current = currentRevealCount;
+  }, [gameState.revealHistory]);
+
+  // Play sound when winner is determined
+  useEffect(() => {
+    if (prevPhase.current !== "finished" && gameState.phase === "finished") {
+      playWinnerSound();
+    }
+    prevPhase.current = gameState.phase;
+  }, [gameState.phase]);
+
   return (
     <div className="min-h-dvh bg-slate-900 text-white p-4">
       <header className="max-w-6xl mx-auto mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-balance">10カードスタッド</h1>
+            <h1 className="text-2xl font-bold text-balance">10カードスタッドAOF</h1>
             <p className="text-slate-400 text-sm">
               あなた: {gameState.players[mySlot]?.name}
             </p>

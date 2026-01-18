@@ -56,7 +56,7 @@ export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error 
   return (
     <div className="min-h-dvh bg-slate-900 text-white flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
-        <h1 className="text-3xl font-bold text-center mb-2 text-balance">10カードスタッド</h1>
+        <h1 className="text-3xl font-bold text-center mb-2 text-balance">10カードスタッドAOF</h1>
         <p className="text-slate-400 text-center mb-6 text-pretty">
           2〜5人のプレイヤーが10枚のカードから最強の5枚を選んで勝負
         </p>

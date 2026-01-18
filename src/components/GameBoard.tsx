@@ -82,7 +82,7 @@ export function GameBoard() {
   return (
     <div className="min-h-dvh bg-slate-900 text-white p-4">
       <header className="max-w-6xl mx-auto mb-6">
-        <h1 className="text-2xl font-bold text-balance">10カードスタッド</h1>
+        <h1 className="text-2xl font-bold text-balance">10カードスタッドAOF</h1>
         <p className="text-slate-400 text-pretty">
           5人のプレイヤーが10枚のカードから最強の5枚を選んで勝負
         </p>
