@@ -43,7 +43,15 @@ export interface GameHistoryEntry {
   id: string;
   players: string[];
   winner: string | null;
-  finished_at: string;
+  started_at: string;
+}
+
+// Playing room for lobby display
+export interface PlayingRoom {
+  id: string;
+  players: string[];
+  current_round: number;
+  started_at: string;
 }
 
 // Get finished games history
@@ -82,7 +90,7 @@ export async function getGameHistory(limit: number = 10): Promise<GameHistoryEnt
           id: room.id,
           players,
           winner,
-          finished_at: room.created_at,
+          started_at: room.created_at,
         });
       } catch {
         // Skip invalid game state
@@ -91,6 +99,47 @@ export async function getGameHistory(limit: number = 10): Promise<GameHistoryEnt
   }
 
   return history;
+}
+
+// Get playing rooms
+export async function getPlayingRooms(): Promise<PlayingRoom[]> {
+  const supabase = getSupabase();
+
+  const { data: rooms, error } = await supabase
+    .from("game_rooms")
+    .select("id, game_state, created_at")
+    .eq("status", "playing")
+    .order("created_at", { ascending: false });
+
+  if (error || !rooms) {
+    console.error("Failed to fetch playing rooms:", error);
+    return [];
+  }
+
+  const playingRooms: PlayingRoom[] = [];
+
+  for (const room of rooms) {
+    if (room.game_state) {
+      try {
+        const gameState = JSON.parse(
+          typeof room.game_state === "string"
+            ? room.game_state
+            : JSON.stringify(room.game_state)
+        ) as GameState;
+
+        playingRooms.push({
+          id: room.id,
+          players: gameState.players.map((p) => p.name),
+          current_round: gameState.currentRound + 1,
+          started_at: room.created_at,
+        });
+      } catch {
+        // Skip invalid game state
+      }
+    }
+  }
+
+  return playingRooms;
 }
 
 // Get all waiting rooms
@@ -332,6 +381,97 @@ export async function getRoomPlayers(roomId: string): Promise<RoomPlayer[]> {
     .order("slot");
 
   return (data as RoomPlayer[]) || [];
+}
+
+// Mark player as offline (for disconnection during game)
+export async function markPlayerOffline(roomId: string, playerId?: string): Promise<void> {
+  const supabase = getSupabase();
+  const pid = playerId || getPlayerId();
+
+  await supabase
+    .from("room_players")
+    .update({ is_online: false })
+    .eq("room_id", roomId)
+    .eq("player_id", pid);
+}
+
+// Remove offline players from room (called when game ends)
+export async function removeOfflinePlayers(roomId: string): Promise<void> {
+  const supabase = getSupabase();
+
+  await supabase
+    .from("room_players")
+    .delete()
+    .eq("room_id", roomId)
+    .eq("is_online", false);
+}
+
+// Auto-play for offline players - select a random unrevealed card
+export async function autoPlayForOfflinePlayers(
+  roomId: string,
+  currentState: GameState,
+  roomPlayers: RoomPlayer[]
+): Promise<GameState | null> {
+  // Find offline players who need to reveal
+  const offlinePlayerSlots = roomPlayers
+    .filter((p) => !p.is_online)
+    .map((p) => p.slot);
+
+  const waitingOffline = currentState.waitingForPlayers.filter((slot) =>
+    offlinePlayerSlots.includes(slot)
+  );
+
+  if (waitingOffline.length === 0) {
+    return null; // No offline players waiting
+  }
+
+  let newState = currentState;
+
+  // Auto-reveal for each offline player
+  for (const slot of waitingOffline) {
+    const player = newState.players[slot];
+    if (!player) continue;
+
+    // Find an unrevealed card from holeCards
+    const unrevealedCard = player.holeCards[0];
+    if (!unrevealedCard) continue;
+
+    // Reveal the card
+    newState = revealSelectedCard(newState, slot, unrevealedCard.id);
+  }
+
+  // If all players have revealed, start next round
+  if (newState.phase === "revealing" && newState.waitingForPlayers.length === 0) {
+    newState = startRevealRound(newState);
+  }
+
+  // If showdown, determine winner
+  if (newState.phase === "showdown") {
+    newState = determineWinner(newState);
+  }
+
+  const status = newState.phase === "finished" ? "finished" : "playing";
+
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("game_rooms")
+    .update({
+      game_state: JSON.stringify(newState),
+      status,
+    })
+    .eq("id", roomId);
+
+  if (error) {
+    console.error("Failed to auto-play:", error);
+    return null;
+  }
+
+  // If game finished, remove offline players
+  if (newState.phase === "finished") {
+    await removeOfflinePlayers(roomId);
+  }
+
+  return newState;
 }
 
 // Start the game (host only)

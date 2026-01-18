@@ -33,5 +33,6 @@ export type RoomPlayer = {
   player_id: string;
   player_name: string;
   slot: number; // 0-4
+  is_online: boolean;
   joined_at: string;
 };

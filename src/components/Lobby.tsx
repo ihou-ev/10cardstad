@@ -2,7 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { RoomWithPlayerCount, GameHistoryEntry, getWaitingRooms, getGameHistory, subscribeToLobby } from "@/lib/online-game";
+import { RoomWithPlayerCount, GameHistoryEntry, PlayingRoom, getWaitingRooms, getGameHistory, getPlayingRooms, subscribeToLobby } from "@/lib/online-game";
+
+function formatDateTime(dateString: string): string {
+  const date = new Date(dateString);
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  return `${month}/${day} ${hours}:${minutes}`;
+}
 
 interface LobbyProps {
   onCreateRoom: (playerName: string) => void;
@@ -15,15 +24,18 @@ interface LobbyProps {
 export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error }: LobbyProps) {
   const [playerName, setPlayerName] = useState("");
   const [rooms, setRooms] = useState<RoomWithPlayerCount[]>([]);
+  const [playingRooms, setPlayingRooms] = useState<PlayingRoom[]>([]);
   const [history, setHistory] = useState<GameHistoryEntry[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
 
   const fetchData = useCallback(async () => {
-    const [waitingRooms, gameHistory] = await Promise.all([
+    const [waitingRooms, activeRooms, gameHistory] = await Promise.all([
       getWaitingRooms(),
+      getPlayingRooms(),
       getGameHistory(10),
     ]);
     setRooms(waitingRooms);
+    setPlayingRooms(activeRooms);
     setHistory(gameHistory);
     setIsLoadingRooms(false);
   }, []);
@@ -135,6 +147,35 @@ export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error 
           </div>
         </div>
 
+        {/* Playing Rooms */}
+        {playingRooms.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-sm font-medium text-slate-300 mb-3">プレイ中のルーム</h2>
+            <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+              <div className="divide-y divide-slate-700">
+                {playingRooms.map((room) => (
+                  <div
+                    key={room.id}
+                    className="flex items-center justify-between p-4"
+                  >
+                    <div>
+                      <div className="font-medium text-slate-300">
+                        {room.players.join(", ")}
+                      </div>
+                      <div className="text-sm text-slate-500">
+                        ラウンド <span className="tabular-nums">{room.current_round}</span> · {formatDateTime(room.started_at)}
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 bg-amber-600/20 text-amber-400 rounded-lg text-sm">
+                      対戦中
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="space-y-3 mb-6">
           <button
@@ -178,6 +219,9 @@ export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error 
                     <div className="flex items-center justify-between mb-1">
                       <div className="text-sm text-slate-300">
                         {game.players.join(", ")}
+                      </div>
+                      <div className="text-xs text-slate-500 tabular-nums">
+                        {formatDateTime(game.started_at)}
                       </div>
                     </div>
                     <div className="text-xs text-slate-500">

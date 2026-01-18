@@ -13,6 +13,7 @@ import {
   startNewGame,
   subscribeToRoom,
   getPlayerId,
+  autoPlayForOfflinePlayers,
 } from "@/lib/online-game";
 import { Lobby } from "./Lobby";
 import { WaitingRoom } from "./WaitingRoom";
@@ -51,18 +52,35 @@ export function App() {
         const playerId = localStorage.getItem("playerId");
 
         if (supabaseUrl && supabaseKey && playerId) {
-          // Use fetch with keepalive to ensure request completes even after page unload
-          fetch(
-            `${supabaseUrl}/rest/v1/room_players?room_id=eq.${currentState.room.id}&player_id=eq.${playerId}`,
-            {
-              method: "DELETE",
-              headers: {
-                "apikey": supabaseKey,
-                "Authorization": `Bearer ${supabaseKey}`,
-              },
-              keepalive: true,
-            }
-          );
+          if (currentState.type === "waiting") {
+            // In waiting room, delete the player
+            fetch(
+              `${supabaseUrl}/rest/v1/room_players?room_id=eq.${currentState.room.id}&player_id=eq.${playerId}`,
+              {
+                method: "DELETE",
+                headers: {
+                  "apikey": supabaseKey,
+                  "Authorization": `Bearer ${supabaseKey}`,
+                },
+                keepalive: true,
+              }
+            );
+          } else {
+            // During game, mark player as offline (auto-play will take over)
+            fetch(
+              `${supabaseUrl}/rest/v1/room_players?room_id=eq.${currentState.room.id}&player_id=eq.${playerId}`,
+              {
+                method: "PATCH",
+                headers: {
+                  "apikey": supabaseKey,
+                  "Authorization": `Bearer ${supabaseKey}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ is_online: false }),
+                keepalive: true,
+              }
+            );
+          }
         }
       }
     };
@@ -72,6 +90,9 @@ export function App() {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, []);
+
+  // Track room players for auto-play
+  const [roomPlayers, setRoomPlayers] = useState<RoomPlayer[]>([]);
 
   // Subscribe to room updates when in waiting or playing state
   useEffect(() => {
@@ -114,6 +135,7 @@ export function App() {
       },
       (players) => {
         console.log("Players updated:", players.length);
+        setRoomPlayers(players);
         // Players updated
         setState((prev) => {
           if (prev.type === "waiting") {
@@ -124,11 +146,51 @@ export function App() {
       }
     );
 
+    // Initial fetch of room players
+    getRoomPlayers(roomId).then(setRoomPlayers);
+
     return () => {
       console.log("Unsubscribing from room:", roomId);
       unsubscribe();
     };
   }, [roomId]);
+
+  // Auto-play for offline players (host triggers this)
+  useEffect(() => {
+    if (state.type !== "playing") return;
+    if (state.room.host_id !== playerId) return; // Only host triggers auto-play
+    if (state.gameState.phase !== "revealing") return;
+
+    // Check if any offline players need to reveal
+    const offlinePlayerSlots = roomPlayers
+      .filter((p) => !p.is_online)
+      .map((p) => p.slot);
+
+    const waitingOffline = state.gameState.waitingForPlayers.filter((slot) =>
+      offlinePlayerSlots.includes(slot)
+    );
+
+    if (waitingOffline.length === 0) return;
+
+    // Delay auto-play slightly to avoid race conditions
+    const timer = setTimeout(async () => {
+      const newState = await autoPlayForOfflinePlayers(
+        state.room.id,
+        state.gameState,
+        roomPlayers
+      );
+      if (newState) {
+        setState((prev) => {
+          if (prev.type === "playing") {
+            return { ...prev, gameState: newState };
+          }
+          return prev;
+        });
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [state, roomPlayers, playerId]);
 
   const handleCreateRoom = useCallback(async (playerName: string) => {
     setIsLoading(true);
