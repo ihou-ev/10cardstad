@@ -175,11 +175,12 @@ export function App() {
       return;
     }
 
-    console.log("Auto-play check:", {
-      roomPlayers: roomPlayers.map(p => ({ slot: p.slot, is_online: p.is_online })),
-      waitingForPlayers: state.gameState.waitingForPlayers,
-      mySlot: state.mySlot,
+    console.log("Auto-play check - roomPlayers detail:");
+    roomPlayers.forEach(p => {
+      console.log(`  Slot ${p.slot}: is_online = ${p.is_online} (type: ${typeof p.is_online})`);
     });
+    console.log("waitingForPlayers:", state.gameState.waitingForPlayers);
+    console.log("mySlot:", state.mySlot);
 
     // Find the lowest slot online player to be the trigger
     const onlinePlayers = roomPlayers.filter((p) => p.is_online !== false);

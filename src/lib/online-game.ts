@@ -376,11 +376,16 @@ export async function leaveRoom(roomId: string): Promise<void> {
 // Get room players
 export async function getRoomPlayers(roomId: string): Promise<RoomPlayer[]> {
   const supabase = getSupabase();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("room_players")
-    .select()
+    .select("id, room_id, player_id, player_name, slot, is_online, joined_at")
     .eq("room_id", roomId)
     .order("slot");
+
+  if (error) {
+    console.error("getRoomPlayers error:", error);
+  }
+  console.log("getRoomPlayers result:", data?.map(p => ({ slot: p.slot, is_online: p.is_online })));
 
   return (data as RoomPlayer[]) || [];
 }
