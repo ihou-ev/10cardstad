@@ -390,11 +390,19 @@ export async function markPlayerOffline(roomId: string, playerId?: string): Prom
   const supabase = getSupabase();
   const pid = playerId || getPlayerId();
 
-  await supabase
+  console.log("markPlayerOffline:", { roomId, playerId: pid });
+
+  const { error } = await supabase
     .from("room_players")
     .update({ is_online: false })
     .eq("room_id", roomId)
     .eq("player_id", pid);
+
+  if (error) {
+    console.error("Failed to mark player offline:", error);
+  } else {
+    console.log("Successfully marked player offline");
+  }
 }
 
 // Remove offline players from room (called when game ends)

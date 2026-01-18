@@ -135,7 +135,7 @@ export function App() {
         }
       },
       (players) => {
-        console.log("Players updated:", players.length);
+        console.log("Players updated:", players.length, players.map(p => ({ slot: p.slot, is_online: p.is_online })));
         setRoomPlayers(players);
         // Players updated
         setState((prev) => {
@@ -161,23 +161,44 @@ export function App() {
     if (state.type !== "playing") return;
     if (state.gameState.phase !== "revealing") return;
 
+    console.log("Auto-play check:", {
+      roomPlayers: roomPlayers.map(p => ({ slot: p.slot, is_online: p.is_online })),
+      waitingForPlayers: state.gameState.waitingForPlayers,
+      mySlot: state.mySlot,
+    });
+
     // Find the lowest slot online player to be the trigger
     const onlinePlayers = roomPlayers.filter((p) => p.is_online !== false);
-    if (onlinePlayers.length === 0) return;
+    console.log("Online players:", onlinePlayers.map(p => p.slot));
+    if (onlinePlayers.length === 0) {
+      console.log("No online players, skipping auto-play");
+      return;
+    }
 
     const triggerPlayer = onlinePlayers.reduce((a, b) => a.slot < b.slot ? a : b);
-    if (triggerPlayer.slot !== state.mySlot) return; // Only the lowest slot triggers
+    console.log("Trigger player slot:", triggerPlayer.slot, "My slot:", state.mySlot);
+    if (triggerPlayer.slot !== state.mySlot) {
+      console.log("Not my turn to trigger auto-play");
+      return;
+    }
 
     // Check if any offline players need to reveal
     const offlinePlayerSlots = roomPlayers
       .filter((p) => p.is_online === false)
       .map((p) => p.slot);
+    console.log("Offline player slots:", offlinePlayerSlots);
 
     const waitingOffline = state.gameState.waitingForPlayers.filter((slot) =>
       offlinePlayerSlots.includes(slot)
     );
+    console.log("Waiting offline players:", waitingOffline);
 
-    if (waitingOffline.length === 0) return;
+    if (waitingOffline.length === 0) {
+      console.log("No offline players waiting to reveal");
+      return;
+    }
+
+    console.log("Triggering auto-play for offline players:", waitingOffline);
 
     // Delay auto-play slightly to avoid race conditions
     const timer = setTimeout(async () => {
@@ -293,12 +314,16 @@ export function App() {
   }, [state]);
 
   const handleLeave = useCallback(async () => {
+    console.log("handleLeave called, state type:", state.type);
     if (state.type === "waiting") {
       // In waiting room, fully leave
+      console.log("Leaving waiting room");
       await leaveRoom(state.room.id);
     } else if (state.type === "playing") {
       // During game, mark as offline (auto-play will take over)
+      console.log("Marking player offline for room:", state.room.id);
       await markPlayerOffline(state.room.id);
+      console.log("Player marked offline");
     }
     setState({ type: "lobby" });
   }, [state]);
