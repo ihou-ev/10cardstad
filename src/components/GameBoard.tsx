@@ -1,102 +1,183 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   GameState,
   initializeGame,
-  processRevealRound,
+  startRevealRound,
+  revealSelectedCard,
   determineWinner,
-  findWeakestPlayers,
 } from "@/lib/game";
 import { PlayerArea } from "./PlayerArea";
 import { cn } from "@/lib/utils";
+import { playCardFlipSound, playWinnerSound } from "@/lib/sounds";
 
-const DEFAULT_PLAYERS = [
-  "プレイヤー 1",
-  "プレイヤー 2",
-  "プレイヤー 3",
-  "プレイヤー 4",
-  "プレイヤー 5",
-];
+const BOT_NAMES = ["CPU 1", "CPU 2", "CPU 3", "CPU 4"];
 
-export function GameBoard() {
+interface GameBoardProps {
+  onBack: () => void;
+}
+
+export function GameBoard({ onBack }: GameBoardProps) {
+  const [playerName, setPlayerName] = useState("");
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const [autoPlay, setAutoPlay] = useState(false);
+
+  // Track previous state for sound effects
+  const prevRevealCount = useRef(0);
+  const prevPhase = useRef<string | null>(null);
 
   const startNewGame = useCallback(() => {
-    const state = initializeGame(DEFAULT_PLAYERS);
-    setGameState(state);
-    setAutoPlay(false);
-  }, []);
+    if (!playerName.trim()) return;
+    const state = initializeGame([playerName.trim(), ...BOT_NAMES]);
+    const stateWithRound = startRevealRound(state);
+    setGameState(stateWithRound);
+  }, [playerName]);
 
-  const nextRound = useCallback(() => {
+  // Player selects a card to reveal
+  const handleSelectCard = useCallback((cardId: string) => {
+    if (!gameState) return;
+    if (gameState.phase !== "revealing") return;
+    if (!gameState.waitingForPlayers.includes(0)) return; // Player is always slot 0
+
+    let newState = revealSelectedCard(gameState, 0, cardId);
+
+    // If all players have revealed and we're still in revealing phase, start next round
+    if (newState.phase === "revealing" && newState.waitingForPlayers.length === 0) {
+      newState = startRevealRound(newState);
+    }
+
+    // If showdown, determine winner
+    if (newState.phase === "showdown") {
+      newState = determineWinner(newState);
+    }
+
+    setGameState(newState);
+  }, [gameState]);
+
+  // Auto-play for bots
+  useEffect(() => {
+    if (!gameState) return;
+    if (gameState.phase !== "revealing") return;
+
+    // Check if any bots need to reveal (slots 1-4)
+    const botsWaiting = gameState.waitingForPlayers.filter((slot) => slot > 0);
+    if (botsWaiting.length === 0) return;
+
+    // Auto-reveal for bots after a short delay
+    const timer = setTimeout(() => {
+      setGameState((prev) => {
+        if (!prev || prev.phase !== "revealing") return prev;
+
+        let newState = prev;
+
+        // Reveal for each waiting bot
+        for (const slot of botsWaiting) {
+          if (!newState.waitingForPlayers.includes(slot)) continue;
+          const player = newState.players[slot];
+          if (!player) continue;
+
+          const unrevealedCard = player.holeCards[0];
+          if (!unrevealedCard) continue;
+
+          newState = revealSelectedCard(newState, slot, unrevealedCard.id);
+        }
+
+        // If all players have revealed, start next round
+        if (newState.phase === "revealing" && newState.waitingForPlayers.length === 0) {
+          newState = startRevealRound(newState);
+        }
+
+        // If showdown, determine winner
+        if (newState.phase === "showdown") {
+          newState = determineWinner(newState);
+        }
+
+        return newState;
+      });
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [gameState]);
+
+  // Play sound when cards are revealed
+  useEffect(() => {
     if (!gameState) return;
 
-    if (gameState.phase === "revealing") {
-      setGameState(processRevealRound(gameState));
-    } else if (gameState.phase === "showdown") {
-      setGameState(determineWinner(gameState));
+    const currentRevealCount = gameState.revealHistory.reduce(
+      (acc, event) => acc + event.cards.length,
+      0
+    );
+
+    if (currentRevealCount > prevRevealCount.current) {
+      playCardFlipSound();
     }
-  }, [gameState]);
+    prevRevealCount.current = currentRevealCount;
+  }, [gameState?.revealHistory]);
 
-  const runAutoPlay = useCallback(() => {
-    if (!gameState || gameState.phase === "finished") return;
+  // Play sound when winner is determined
+  useEffect(() => {
+    if (!gameState) return;
 
-    setAutoPlay(true);
+    if (prevPhase.current !== "finished" && gameState.phase === "finished") {
+      playWinnerSound();
+    }
+    prevPhase.current = gameState.phase;
+  }, [gameState?.phase]);
 
-    const runStep = () => {
-      setGameState((prev) => {
-        if (!prev || prev.phase === "finished") {
-          setAutoPlay(false);
-          return prev;
-        }
-
-        if (prev.phase === "revealing") {
-          const next = processRevealRound(prev);
-          if (next.phase !== "finished") {
-            setTimeout(runStep, 800);
-          } else {
-            setAutoPlay(false);
-          }
-          return next;
-        } else if (prev.phase === "showdown") {
-          setAutoPlay(false);
-          return determineWinner(prev);
-        }
-
-        return prev;
-      });
-    };
-
-    runStep();
-  }, [gameState]);
-
-  const weakestPlayerIds = gameState?.phase === "revealing"
-    ? new Set(findWeakestPlayers(gameState.players).map((p) => p.id))
+  const waitingPlayerIds = gameState?.waitingForPlayers
+    ? new Set(gameState.waitingForPlayers)
     : new Set<number>();
 
   const winnerIds = gameState?.winner
     ? new Set(gameState.winner.map((p) => p.id))
     : new Set<number>();
 
+  const isMyTurn = gameState?.phase === "revealing" && waitingPlayerIds.has(0);
+
   return (
     <div className="min-h-dvh bg-slate-900 text-white p-4">
       <header className="max-w-6xl mx-auto mb-6">
-        <h1 className="text-2xl font-bold text-balance">10カードスタッドAOF</h1>
-        <p className="text-slate-400 text-pretty">
-          5人のプレイヤーが10枚のカードから最強の5枚を選んで勝負
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-balance">プラクティスモード</h1>
+            {gameState && (
+              <p className="text-slate-400 text-sm">
+                あなた: {gameState.players[0]?.name}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={onBack}
+            className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
+          >
+            戻る
+          </button>
+        </div>
       </header>
 
       <main className="max-w-6xl mx-auto">
         {!gameState ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <p className="text-slate-400 mb-6 text-pretty">
-              ゲームを開始して、最弱プレイヤーから順にカードを公開していきます
+          <div className="flex flex-col items-center justify-center py-20 max-w-md mx-auto">
+            <p className="text-slate-400 mb-6 text-center text-pretty">
+              4人のCPUと対戦します。名前を入力してゲームを開始してください。
             </p>
+            <input
+              type="text"
+              value={playerName}
+              onChange={(e) => setPlayerName(e.target.value)}
+              placeholder="あなたの名前"
+              maxLength={20}
+              className="w-full px-4 py-3 mb-4 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            />
             <button
               onClick={startNewGame}
-              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium transition-colors"
+              disabled={!playerName.trim()}
+              className={cn(
+                "w-full px-6 py-3 rounded-lg font-medium transition-colors",
+                playerName.trim()
+                  ? "bg-emerald-600 hover:bg-emerald-500"
+                  : "bg-slate-700 text-slate-500 cursor-not-allowed"
+              )}
             >
               ゲームを開始
             </button>
@@ -113,50 +194,46 @@ export function GameBoard() {
                     gameState.phase === "finished" && "bg-emerald-600"
                   )}
                 >
-                  {gameState.phase === "revealing" && `公開フェーズ (ラウンド ${gameState.currentRound + 1})`}
+                  {gameState.phase === "revealing" &&
+                    `公開フェーズ (ラウンド ${gameState.currentRound + 1})`}
                   {gameState.phase === "showdown" && "ショーダウン"}
                   {gameState.phase === "finished" && "ゲーム終了"}
                 </span>
+
+                {isMyTurn && (
+                  <span className="px-3 py-1.5 rounded-lg text-sm font-medium bg-red-600">
+                    あなたの番です
+                  </span>
+                )}
               </div>
 
-              <div className="flex items-center gap-2">
-                {gameState.phase !== "finished" && (
-                  <>
-                    <button
-                      onClick={nextRound}
-                      disabled={autoPlay}
-                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      次へ
-                    </button>
-                    <button
-                      onClick={runAutoPlay}
-                      disabled={autoPlay}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      {autoPlay ? "実行中..." : "自動進行"}
-                    </button>
-                  </>
-                )}
-                <button
-                  onClick={startNewGame}
-                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors"
-                >
-                  新しいゲーム
-                </button>
-              </div>
+              {isMyTurn && (
+                <span className="text-sm text-slate-400">
+                  下のカードをクリックして公開
+                </span>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {gameState.players.map((player) => (
-                <PlayerArea
-                  key={player.id}
-                  player={player}
-                  isWeakest={weakestPlayerIds.has(player.id)}
-                  isWinner={winnerIds.has(player.id)}
-                  showFinalHand={gameState.phase === "finished"}
-                />
-              ))}
+              {gameState.players.map((player, idx) => {
+                const isWaiting = waitingPlayerIds.has(player.id);
+                const canSelect = idx === 0 && isMyTurn;
+                return (
+                  <div
+                    key={player.id}
+                    className={cn(idx === 0 && "ring-2 ring-blue-500 rounded-xl")}
+                  >
+                    <PlayerArea
+                      player={player}
+                      isWeakest={isWaiting}
+                      isWinner={winnerIds.has(player.id)}
+                      showFinalHand={gameState.phase === "finished"}
+                      canSelectCard={canSelect}
+                      onSelectCard={handleSelectCard}
+                    />
+                  </div>
+                );
+              })}
             </div>
 
             {gameState.phase === "finished" && gameState.winner && (
@@ -166,27 +243,18 @@ export function GameBoard() {
                     ? `${gameState.winner[0].name} の勝利!`
                     : `引き分け: ${gameState.winner.map((p) => p.name).join(", ")}`}
                 </h2>
-              </div>
-            )}
-
-            {gameState.revealHistory.length > 0 && (
-              <div className="mt-8">
-                <h3 className="text-lg font-semibold mb-3 text-balance">公開履歴</h3>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {gameState.revealHistory.map((event, idx) => (
-                    <div
-                      key={idx}
-                      className="text-sm text-slate-400 bg-slate-800/50 rounded-lg px-3 py-2"
-                    >
-                      <span className="text-slate-300 tabular-nums">R{event.round + 1}:</span>{" "}
-                      {event.cards.map((c) => {
-                        const player = gameState.players.find((p) => p.id === c.playerId);
-                        return `${player?.name}`;
-                      }).join(", ")}{" "}
-                      がカードを公開
-                    </div>
-                  ))}
-                </div>
+                <button
+                  onClick={() => {
+                    const state = initializeGame([playerName.trim(), ...BOT_NAMES]);
+                    const stateWithRound = startRevealRound(state);
+                    setGameState(stateWithRound);
+                    prevRevealCount.current = 0;
+                    prevPhase.current = null;
+                  }}
+                  className="mt-4 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-medium transition-colors"
+                >
+                  もう一度プレイ
+                </button>
               </div>
             )}
           </>

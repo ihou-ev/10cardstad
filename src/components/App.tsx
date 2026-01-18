@@ -306,7 +306,7 @@ export function App() {
   }
 
   if (state.type === "local") {
-    return <GameBoard />;
+    return <GameBoard onBack={() => setState({ type: "lobby" })} />;
   }
 
   if (state.type === "waiting") {

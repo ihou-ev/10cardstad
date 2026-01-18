@@ -204,7 +204,7 @@ export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error 
             onClick={onPlayLocal}
             className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition-colors"
           >
-            ローカルでプレイ
+            プラクティスモード
           </button>
         </div>
 
