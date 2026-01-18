@@ -218,8 +218,9 @@ export function App() {
   if (state.type === "waiting") {
     return (
       <WaitingRoom
-        roomCode={state.room.room_code}
         players={state.players}
+        hostPlayerId={state.room.host_id}
+        myPlayerId={playerId}
         isHost={state.room.host_id === playerId}
         onStartGame={handleStartGame}
         onLeave={handleLeave}

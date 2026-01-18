@@ -4,32 +4,21 @@ import { RoomPlayer } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
 interface WaitingRoomProps {
-  roomCode: string;
   players: RoomPlayer[];
+  hostPlayerId: string;
+  myPlayerId: string;
   isHost: boolean;
   onStartGame: () => void;
   onLeave: () => void;
 }
 
-export function WaitingRoom({ roomCode, players, isHost, onStartGame, onLeave }: WaitingRoomProps) {
+export function WaitingRoom({ players, hostPlayerId, myPlayerId, isHost, onStartGame, onLeave }: WaitingRoomProps) {
   const canStart = players.length >= 2 && players.length <= 5;
 
   return (
     <div className="min-h-dvh bg-slate-900 text-white flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center mb-2 text-balance">待機ルーム</h1>
-
-        <div className="text-center mb-6">
-          <p className="text-slate-400 text-sm mb-2">ルームコード</p>
-          <div className="inline-block px-6 py-3 bg-slate-800 rounded-xl">
-            <span className="text-3xl font-mono font-bold tracking-widest tabular-nums">
-              {roomCode}
-            </span>
-          </div>
-          <p className="text-slate-500 text-xs mt-2">
-            このコードを友達に共有してください
-          </p>
-        </div>
+        <h1 className="text-2xl font-bold text-center mb-6 text-balance">待機ルーム</h1>
 
         <div className="bg-slate-800/50 rounded-xl p-4 mb-6">
           <h2 className="text-sm font-medium text-slate-400 mb-3">
@@ -55,7 +44,19 @@ export function WaitingRoom({ roomCode, players, isHost, onStartGame, onLeave }:
                     {slot + 1}
                   </div>
                   {player ? (
-                    <span className="font-medium">{player.player_name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{player.player_name}</span>
+                      {player.player_id === hostPlayerId && (
+                        <span className="px-1.5 py-0.5 text-xs bg-amber-600 text-amber-100 rounded">
+                          ホスト
+                        </span>
+                      )}
+                      {player.player_id === myPlayerId && (
+                        <span className="px-1.5 py-0.5 text-xs bg-blue-600 text-blue-100 rounded">
+                          あなた
+                        </span>
+                      )}
+                    </div>
                   ) : (
                     <span className="text-slate-500">待機中...</span>
                   )}

@@ -220,16 +220,51 @@ export async function joinRoomById(
   return { room: room as GameRoom, playerId, slot };
 }
 
-// Leave a room
+// Leave a room (with host transfer)
 export async function leaveRoom(roomId: string): Promise<void> {
   const supabase = getSupabase();
   const playerId = getPlayerId();
 
+  // Get room info
+  const { data: room } = await supabase
+    .from("game_rooms")
+    .select()
+    .eq("id", roomId)
+    .single();
+
+  if (!room) return;
+
+  // Remove player from room
   await supabase
     .from("room_players")
     .delete()
     .eq("room_id", roomId)
     .eq("player_id", playerId);
+
+  // Check remaining players
+  const { data: remainingPlayers } = await supabase
+    .from("room_players")
+    .select()
+    .eq("room_id", roomId)
+    .order("slot");
+
+  // If no players left, delete the room
+  if (!remainingPlayers || remainingPlayers.length === 0) {
+    await supabase
+      .from("game_rooms")
+      .delete()
+      .eq("id", roomId);
+    return;
+  }
+
+  // If leaving player was host, transfer to next player
+  if (room.host_id === playerId) {
+    const newHost = remainingPlayers[0];
+    await supabase
+      .from("game_rooms")
+      .update({ host_id: newHost.player_id })
+      .eq("id", roomId);
+  }
 }
 
 // Get room players
