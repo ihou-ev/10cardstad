@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { RoomWithPlayerCount, getWaitingRooms, subscribeToLobby } from "@/lib/online-game";
+import { RoomWithPlayerCount, GameHistoryEntry, getWaitingRooms, getGameHistory, subscribeToLobby } from "@/lib/online-game";
 
 interface LobbyProps {
   onCreateRoom: (playerName: string) => void;
@@ -15,26 +15,31 @@ interface LobbyProps {
 export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error }: LobbyProps) {
   const [playerName, setPlayerName] = useState("");
   const [rooms, setRooms] = useState<RoomWithPlayerCount[]>([]);
+  const [history, setHistory] = useState<GameHistoryEntry[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
 
-  const fetchRooms = useCallback(async () => {
-    const waitingRooms = await getWaitingRooms();
+  const fetchData = useCallback(async () => {
+    const [waitingRooms, gameHistory] = await Promise.all([
+      getWaitingRooms(),
+      getGameHistory(10),
+    ]);
     setRooms(waitingRooms);
+    setHistory(gameHistory);
     setIsLoadingRooms(false);
   }, []);
 
   useEffect(() => {
-    fetchRooms();
+    fetchData();
 
     // Subscribe to lobby updates
     const unsubscribe = subscribeToLobby(() => {
-      fetchRooms();
+      fetchData();
     });
 
     return () => {
       unsubscribe();
     };
-  }, [fetchRooms]);
+  }, [fetchData]);
 
   const handleCreateRoom = () => {
     if (playerName.trim()) {
@@ -82,7 +87,7 @@ export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error 
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium text-slate-300">待機中のルーム</h2>
             <button
-              onClick={fetchRooms}
+              onClick={fetchData}
               className="text-xs text-slate-400 hover:text-white transition-colors"
             >
               更新
@@ -131,7 +136,7 @@ export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error 
         </div>
 
         {/* Actions */}
-        <div className="space-y-3">
+        <div className="space-y-3 mb-6">
           <button
             onClick={handleCreateRoom}
             disabled={!playerName.trim() || isLoading}
@@ -161,6 +166,33 @@ export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error 
             ローカルでプレイ
           </button>
         </div>
+
+        {/* Game History */}
+        {history.length > 0 && (
+          <div>
+            <h2 className="text-sm font-medium text-slate-300 mb-3">最近のゲーム</h2>
+            <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+              <div className="divide-y divide-slate-700">
+                {history.map((game) => (
+                  <div key={game.id} className="p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-sm text-slate-300">
+                        {game.players.join(", ")}
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {game.winner ? (
+                        <span className="text-amber-400">勝者: {game.winner}</span>
+                      ) : (
+                        <span>結果なし</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

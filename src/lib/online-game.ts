@@ -38,6 +38,61 @@ export interface RoomWithPlayerCount {
   created_at: string;
 }
 
+// Game history for lobby display
+export interface GameHistoryEntry {
+  id: string;
+  players: string[];
+  winner: string | null;
+  finished_at: string;
+}
+
+// Get finished games history
+export async function getGameHistory(limit: number = 10): Promise<GameHistoryEntry[]> {
+  const supabase = getSupabase();
+
+  const { data: rooms, error } = await supabase
+    .from("game_rooms")
+    .select("id, game_state, created_at")
+    .eq("status", "finished")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error || !rooms) {
+    console.error("Failed to fetch game history:", error);
+    return [];
+  }
+
+  const history: GameHistoryEntry[] = [];
+
+  for (const room of rooms) {
+    if (room.game_state) {
+      try {
+        const gameState = JSON.parse(
+          typeof room.game_state === "string"
+            ? room.game_state
+            : JSON.stringify(room.game_state)
+        ) as GameState;
+
+        const players = gameState.players.map((p) => p.name);
+        const winner = gameState.winner && gameState.winner.length > 0
+          ? gameState.winner.map((w) => w.name).join(", ")
+          : null;
+
+        history.push({
+          id: room.id,
+          players,
+          winner,
+          finished_at: room.created_at,
+        });
+      } catch {
+        // Skip invalid game state
+      }
+    }
+  }
+
+  return history;
+}
+
 // Get all waiting rooms
 export async function getWaitingRooms(): Promise<RoomWithPlayerCount[]> {
   const supabase = getSupabase();
