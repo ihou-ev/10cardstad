@@ -41,6 +41,38 @@ export function App() {
   // Get roomId from state
   const roomId = (state.type === "waiting" || state.type === "playing") ? state.room.id : null;
 
+  // Auto-leave room when browser is closed or page is navigated away
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const currentState = stateRef.current;
+      if (currentState.type === "waiting" || currentState.type === "playing") {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const playerId = localStorage.getItem("playerId");
+
+        if (supabaseUrl && supabaseKey && playerId) {
+          // Use fetch with keepalive to ensure request completes even after page unload
+          fetch(
+            `${supabaseUrl}/rest/v1/room_players?room_id=eq.${currentState.room.id}&player_id=eq.${playerId}`,
+            {
+              method: "DELETE",
+              headers: {
+                "apikey": supabaseKey,
+                "Authorization": `Bearer ${supabaseKey}`,
+              },
+              keepalive: true,
+            }
+          );
+        }
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
+
   // Subscribe to room updates when in waiting or playing state
   useEffect(() => {
     if (!roomId) return;
