@@ -1,6 +1,6 @@
 "use client";
 
-import { GameState, findWeakestPlayers } from "@/lib/game";
+import { GameState } from "@/lib/game";
 import { PlayerArea } from "./PlayerArea";
 import { cn } from "@/lib/utils";
 
@@ -8,7 +8,8 @@ interface OnlineGameBoardProps {
   gameState: GameState;
   isHost: boolean;
   mySlot: number;
-  onNextRound: () => void;
+  onSelectCard: (cardId: string) => void;
+  onNextGame: () => void;
   onLeave: () => void;
 }
 
@@ -16,19 +17,18 @@ export function OnlineGameBoard({
   gameState,
   isHost,
   mySlot,
-  onNextRound,
+  onSelectCard,
+  onNextGame,
   onLeave,
 }: OnlineGameBoardProps) {
-  const weakestPlayerIds =
-    gameState.phase === "revealing"
-      ? new Set(findWeakestPlayers(gameState.players).map((p) => p.id))
-      : new Set<number>();
+  // Players who need to reveal are in waitingForPlayers
+  const waitingPlayerIds = new Set(gameState.waitingForPlayers || []);
 
   const winnerIds = gameState.winner
     ? new Set(gameState.winner.map((p) => p.id))
     : new Set<number>();
 
-  const isMyTurn = weakestPlayerIds.has(mySlot);
+  const isMyTurn = waitingPlayerIds.has(mySlot);
 
   return (
     <div className="min-h-dvh bg-slate-900 text-white p-4">
@@ -73,30 +73,33 @@ export function OnlineGameBoard({
             )}
           </div>
 
-          {isHost && gameState.phase !== "finished" && (
-            <button
-              onClick={onNextRound}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors"
-            >
-              次へ進む
-            </button>
+          {isMyTurn && gameState.phase === "revealing" && (
+            <span className="text-sm text-slate-400">
+              下のカードをクリックして公開
+            </span>
           )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {gameState.players.map((player, idx) => (
-            <div
-              key={player.id}
-              className={cn(idx === mySlot && "ring-2 ring-blue-500 rounded-xl")}
-            >
-              <PlayerArea
-                player={player}
-                isWeakest={weakestPlayerIds.has(player.id)}
-                isWinner={winnerIds.has(player.id)}
-                showFinalHand={gameState.phase === "finished"}
-              />
-            </div>
-          ))}
+          {gameState.players.map((player, idx) => {
+            const isWaiting = waitingPlayerIds.has(player.id);
+            const canSelect = idx === mySlot && isMyTurn && gameState.phase === "revealing";
+            return (
+              <div
+                key={player.id}
+                className={cn(idx === mySlot && "ring-2 ring-blue-500 rounded-xl")}
+              >
+                <PlayerArea
+                  player={player}
+                  isWeakest={isWaiting}
+                  isWinner={winnerIds.has(player.id)}
+                  showFinalHand={gameState.phase === "finished"}
+                  canSelectCard={canSelect}
+                  onSelectCard={onSelectCard}
+                />
+              </div>
+            );
+          })}
         </div>
 
         {gameState.phase === "finished" && gameState.winner && (
@@ -106,6 +109,19 @@ export function OnlineGameBoard({
                 ? `${gameState.winner[0].name} の勝利!`
                 : `引き分け: ${gameState.winner.map((p) => p.name).join(", ")}`}
             </h2>
+            {isHost && (
+              <button
+                onClick={onNextGame}
+                className="mt-4 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-medium transition-colors"
+              >
+                次のゲームを開始
+              </button>
+            )}
+            {!isHost && (
+              <p className="mt-4 text-slate-400 text-sm">
+                ホストが次のゲームを開始するのを待っています...
+              </p>
+            )}
           </div>
         )}
 

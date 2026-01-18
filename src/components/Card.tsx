@@ -7,6 +7,8 @@ interface CardProps {
   card: CardType;
   faceDown?: boolean;
   highlight?: boolean;
+  selectable?: boolean;
+  onSelect?: () => void;
   size?: "sm" | "md" | "lg";
 }
 
@@ -16,17 +18,30 @@ const sizeClasses = {
   lg: "w-20 h-28 text-xl",
 };
 
-export function PlayingCard({ card, faceDown = false, highlight = false, size = "md" }: CardProps) {
+export function PlayingCard({ card, faceDown = false, highlight = false, selectable = false, onSelect, size = "md" }: CardProps) {
   const isRed = isRedSuit(card.suit);
 
   if (faceDown) {
+    const baseClasses = cn(
+      "rounded-lg border-2 flex items-center justify-center",
+      sizeClasses[size],
+      selectable
+        ? "border-blue-500 bg-blue-900 cursor-pointer hover:border-blue-400 hover:bg-blue-800"
+        : "border-slate-600 bg-slate-700"
+    );
+
+    if (selectable) {
+      return (
+        <button onClick={onSelect} className={baseClasses}>
+          <div className="size-6 rounded-full bg-blue-600 flex items-center justify-center">
+            <span className="text-xs text-white">?</span>
+          </div>
+        </button>
+      );
+    }
+
     return (
-      <div
-        className={cn(
-          "rounded-lg border-2 border-slate-600 bg-slate-700 flex items-center justify-center",
-          sizeClasses[size]
-        )}
-      >
+      <div className={baseClasses}>
         <div className="size-6 rounded-full bg-slate-600" />
       </div>
     );
@@ -51,11 +66,13 @@ interface CardRowProps {
   cards: CardType[];
   faceDown?: boolean;
   highlightCards?: Set<string>;
+  selectable?: boolean;
+  onSelectCard?: (cardId: string) => void;
   size?: "sm" | "md" | "lg";
   label?: string;
 }
 
-export function CardRow({ cards, faceDown = false, highlightCards, size = "md", label }: CardRowProps) {
+export function CardRow({ cards, faceDown = false, highlightCards, selectable = false, onSelectCard, size = "md", label }: CardRowProps) {
   return (
     <div className="flex flex-col gap-1">
       {label && (
@@ -68,6 +85,8 @@ export function CardRow({ cards, faceDown = false, highlightCards, size = "md", 
             card={card}
             faceDown={faceDown}
             highlight={highlightCards?.has(card.id)}
+            selectable={selectable}
+            onSelect={() => onSelectCard?.(card.id)}
             size={size}
           />
         ))}

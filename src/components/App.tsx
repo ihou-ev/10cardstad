@@ -9,7 +9,8 @@ import {
   leaveRoom,
   getRoomPlayers,
   startGame,
-  processNextRound,
+  revealCardOnline,
+  startNewGame,
   subscribeToRoom,
   getPlayerId,
 } from "@/lib/online-game";
@@ -158,10 +159,29 @@ export function App() {
     }
   }, [state]);
 
-  const handleNextRound = useCallback(async () => {
+  const handleSelectCard = useCallback(async (cardId: string) => {
     if (state.type !== "playing") return;
 
-    const newState = await processNextRound(state.room.id, state.gameState);
+    const newState = await revealCardOnline(
+      state.room.id,
+      state.gameState,
+      state.mySlot,
+      cardId
+    );
+
+    if (newState) {
+      setState({
+        ...state,
+        gameState: newState,
+      });
+    }
+  }, [state]);
+
+  const handleNextGame = useCallback(async () => {
+    if (state.type !== "playing") return;
+
+    const playerNames = state.gameState.players.map((p) => p.name);
+    const newState = await startNewGame(state.room.id, playerNames);
 
     if (newState) {
       setState({
@@ -213,7 +233,8 @@ export function App() {
         gameState={state.gameState}
         isHost={state.room.host_id === playerId}
         mySlot={state.mySlot}
-        onNextRound={handleNextRound}
+        onSelectCard={handleSelectCard}
+        onNextGame={handleNextGame}
         onLeave={handleLeave}
       />
     );

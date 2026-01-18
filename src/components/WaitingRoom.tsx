@@ -12,7 +12,7 @@ interface WaitingRoomProps {
 }
 
 export function WaitingRoom({ roomCode, players, isHost, onStartGame, onLeave }: WaitingRoomProps) {
-  const canStart = players.length === 5;
+  const canStart = players.length >= 2 && players.length <= 5;
 
   return (
     <div className="min-h-dvh bg-slate-900 text-white flex items-center justify-center p-4">
@@ -33,7 +33,7 @@ export function WaitingRoom({ roomCode, players, isHost, onStartGame, onLeave }:
 
         <div className="bg-slate-800/50 rounded-xl p-4 mb-6">
           <h2 className="text-sm font-medium text-slate-400 mb-3">
-            プレイヤー ({players.length}/5)
+            プレイヤー ({players.length}/5) - 2人から開始可能
           </h2>
           <div className="space-y-2">
             {[0, 1, 2, 3, 4].map((slot) => {
@@ -76,7 +76,7 @@ export function WaitingRoom({ roomCode, players, isHost, onStartGame, onLeave }:
                 : "bg-slate-700 text-slate-500 cursor-not-allowed"
             )}
           >
-            {canStart ? "ゲームを開始" : `あと${5 - players.length}人必要`}
+            {canStart ? "ゲームを開始" : "あと1人必要"}
           </button>
         ) : (
           <div className="text-center py-4 text-slate-400">

@@ -1,5 +1,5 @@
 import { getSupabase, GameRoom, RoomPlayer } from "./supabase";
-import { GameState, initializeGame, processRevealRound, determineWinner } from "./game";
+import { GameState, initializeGame, determineWinner, startRevealRound, revealSelectedCard } from "./game";
 
 // Generate a random 6-character room code
 export function generateRoomCode(): string {
@@ -175,8 +175,8 @@ export async function startGame(roomId: string, players: RoomPlayer[]): Promise<
     return null;
   }
 
-  if (players.length !== 5) {
-    console.error("Need exactly 5 players");
+  if (players.length < 2 || players.length > 5) {
+    console.error("Need 2-5 players");
     return null;
   }
 
@@ -184,12 +184,15 @@ export async function startGame(roomId: string, players: RoomPlayer[]): Promise<
   const playerNames = players.sort((a, b) => a.slot - b.slot).map((p) => p.player_name);
   const gameState = initializeGame(playerNames);
 
+  // Start the first reveal round to identify who needs to select cards
+  const stateWithRound = startRevealRound(gameState);
+
   // Update room with game state
   const { error } = await supabase
     .from("game_rooms")
     .update({
       status: "playing",
-      game_state: JSON.stringify(gameState),
+      game_state: JSON.stringify(stateWithRound),
     })
     .eq("id", roomId);
 
@@ -198,18 +201,47 @@ export async function startGame(roomId: string, players: RoomPlayer[]): Promise<
     return null;
   }
 
-  return gameState;
+  return stateWithRound;
 }
 
-// Process next reveal round
-export async function processNextRound(roomId: string, currentState: GameState): Promise<GameState | null> {
+// Start a reveal round - notify which players need to select
+export async function startRevealRoundOnline(roomId: string, currentState: GameState): Promise<GameState | null> {
   const supabase = getSupabase();
-  let newState = currentState;
+  const newState = startRevealRound(currentState);
 
-  if (currentState.phase === "revealing") {
-    newState = processRevealRound(currentState);
-  } else if (currentState.phase === "showdown") {
-    newState = determineWinner(currentState);
+  const { error } = await supabase
+    .from("game_rooms")
+    .update({
+      game_state: JSON.stringify(newState),
+    })
+    .eq("id", roomId);
+
+  if (error) {
+    console.error("Failed to start reveal round:", error);
+    return null;
+  }
+
+  return newState;
+}
+
+// Player selects which card to reveal
+export async function revealCardOnline(
+  roomId: string,
+  currentState: GameState,
+  playerId: number,
+  cardId: string
+): Promise<GameState | null> {
+  const supabase = getSupabase();
+  let newState = revealSelectedCard(currentState, playerId, cardId);
+
+  // If all players have revealed and we're still in revealing phase, auto-start next round
+  if (newState.phase === "revealing" && newState.waitingForPlayers.length === 0) {
+    newState = startRevealRound(newState);
+  }
+
+  // If we're in showdown phase, determine the winner
+  if (newState.phase === "showdown") {
+    newState = determineWinner(newState);
   }
 
   const status = newState.phase === "finished" ? "finished" : "playing";
@@ -223,11 +255,37 @@ export async function processNextRound(roomId: string, currentState: GameState):
     .eq("id", roomId);
 
   if (error) {
-    console.error("Failed to update game state:", error);
+    console.error("Failed to reveal card:", error);
     return null;
   }
 
   return newState;
+}
+
+// Start a new game with the same players
+export async function startNewGame(roomId: string, playerNames: string[]): Promise<GameState | null> {
+  const supabase = getSupabase();
+
+  // Initialize a fresh game with the same players
+  const gameState = initializeGame(playerNames);
+
+  // Start the first reveal round
+  const stateWithRound = startRevealRound(gameState);
+
+  const { error } = await supabase
+    .from("game_rooms")
+    .update({
+      status: "playing",
+      game_state: JSON.stringify(stateWithRound),
+    })
+    .eq("id", roomId);
+
+  if (error) {
+    console.error("Failed to start new game:", error);
+    return null;
+  }
+
+  return stateWithRound;
 }
 
 // Subscribe to room updates

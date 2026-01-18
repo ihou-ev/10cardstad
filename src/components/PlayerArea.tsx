@@ -10,9 +10,11 @@ interface PlayerAreaProps {
   isWeakest?: boolean;
   isWinner?: boolean;
   showFinalHand?: boolean;
+  canSelectCard?: boolean;
+  onSelectCard?: (cardId: string) => void;
 }
 
-export function PlayerArea({ player, isWeakest = false, isWinner = false, showFinalHand = false }: PlayerAreaProps) {
+export function PlayerArea({ player, isWeakest = false, isWinner = false, showFinalHand = false, canSelectCard = false, onSelectCard }: PlayerAreaProps) {
   const revealedCards = getRevealedCards(player);
   const currentHand = getCurrentStrength(player);
   const bestCards = new Set(currentHand.cards.map((c) => c.id));
@@ -68,8 +70,10 @@ export function PlayerArea({ player, isWeakest = false, isWinner = false, showFi
           <CardRow
             cards={player.holeCards}
             faceDown
-            label={`未公開 (${player.holeCards.length}枚)`}
+            label={canSelectCard ? `公開するカードを選択 (${player.holeCards.length}枚)` : `未公開 (${player.holeCards.length}枚)`}
             size="sm"
+            selectable={canSelectCard}
+            onSelectCard={onSelectCard}
           />
         )}
       </div>

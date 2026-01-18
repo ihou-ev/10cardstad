@@ -1,5 +1,5 @@
 import { Card, createDeck, shuffleDeck } from "./cards";
-import { findBestHand, HandResult, compareHands } from "./poker";
+import { findBestHand, HandResult } from "./poker";
 
 export interface Player {
   id: number;
@@ -11,11 +11,12 @@ export interface Player {
 
 export interface GameState {
   players: Player[];
-  deadCards: Card[]; // 2 unused cards
+  deadCards: Card[]; // Unused cards
   phase: "dealing" | "revealing" | "showdown" | "finished";
-  currentRound: number; // 0-4 for revealing rounds
+  currentRound: number;
   revealHistory: RevealEvent[];
   winner: Player[] | null;
+  waitingForPlayers: number[]; // Players who need to select a card to reveal
 }
 
 export interface RevealEvent {
@@ -43,14 +44,15 @@ export function getFinalStrength(player: Player): HandResult {
 }
 
 export function initializeGame(playerNames: string[]): GameState {
-  if (playerNames.length !== 5) {
-    throw new Error("Game requires exactly 5 players");
+  const playerCount = playerNames.length;
+  if (playerCount < 2 || playerCount > 5) {
+    throw new Error("Game requires 2-5 players");
   }
 
   const deck = shuffleDeck(createDeck());
   const players: Player[] = [];
 
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < playerCount; i++) {
     const startIdx = i * 10;
     const doorCards = deck.slice(startIdx, startIdx + 5);
     const holeCards = deck.slice(startIdx + 5, startIdx + 10);
@@ -64,7 +66,8 @@ export function initializeGame(playerNames: string[]): GameState {
     });
   }
 
-  const deadCards = deck.slice(50, 52);
+  // Remaining cards are dead cards
+  const deadCards = deck.slice(playerCount * 10);
 
   return {
     players,
@@ -73,6 +76,7 @@ export function initializeGame(playerNames: string[]): GameState {
     currentRound: 0,
     revealHistory: [],
     winner: null,
+    waitingForPlayers: [],
   };
 }
 
@@ -104,19 +108,111 @@ export function findWeakestPlayers(players: Player[]): Player[] {
     .map((s) => s.player);
 }
 
-export function revealCard(player: Player): Card {
-  if (player.holeCards.length === 0) {
-    throw new Error("No more hole cards to reveal");
+// Start a reveal round - returns players who need to select a card
+export function startRevealRound(state: GameState): GameState {
+  if (state.phase !== "revealing") {
+    return state;
   }
 
-  // Reveal the first hole card (random since deck was shuffled)
-  const card = player.holeCards[0];
-  player.holeCards = player.holeCards.slice(1);
-  player.revealedHoleCards = [...player.revealedHoleCards, card];
+  const weakestPlayers = findWeakestPlayers(state.players);
 
-  return card;
+  if (weakestPlayers.length === 0) {
+    return {
+      ...state,
+      phase: "showdown",
+      waitingForPlayers: [],
+    };
+  }
+
+  return {
+    ...state,
+    waitingForPlayers: weakestPlayers.map((p) => p.id),
+  };
 }
 
+// Player selects which card to reveal
+export function revealSelectedCard(
+  state: GameState,
+  playerId: number,
+  cardId: string
+): GameState {
+  if (state.phase !== "revealing") {
+    return state;
+  }
+
+  if (!state.waitingForPlayers.includes(playerId)) {
+    return state;
+  }
+
+  const playerIndex = state.players.findIndex((p) => p.id === playerId);
+  if (playerIndex === -1) return state;
+
+  const player = state.players[playerIndex];
+  const cardIndex = player.holeCards.findIndex((c) => c.id === cardId);
+  if (cardIndex === -1) return state;
+
+  const card = player.holeCards[cardIndex];
+  const newHoleCards = player.holeCards.filter((c) => c.id !== cardId);
+  const newRevealedHoleCards = [...player.revealedHoleCards, card];
+
+  const newPlayers = [...state.players];
+  newPlayers[playerIndex] = {
+    ...player,
+    holeCards: newHoleCards,
+    revealedHoleCards: newRevealedHoleCards,
+  };
+
+  const newWaitingForPlayers = state.waitingForPlayers.filter((id) => id !== playerId);
+
+  // Add to reveal history
+  const existingEvent = state.revealHistory.find((e) => e.round === state.currentRound);
+  let newRevealHistory: RevealEvent[];
+
+  if (existingEvent) {
+    newRevealHistory = state.revealHistory.map((e) =>
+      e.round === state.currentRound
+        ? {
+            ...e,
+            playerIds: [...e.playerIds, playerId],
+            cards: [...e.cards, { playerId, card }],
+          }
+        : e
+    );
+  } else {
+    newRevealHistory = [
+      ...state.revealHistory,
+      {
+        round: state.currentRound,
+        playerIds: [playerId],
+        cards: [{ playerId, card }],
+      },
+    ];
+  }
+
+  // Check if all waiting players have revealed
+  if (newWaitingForPlayers.length === 0) {
+    // Check if all hole cards are revealed
+    const allRevealed = newPlayers.every((p) => p.holeCards.length === 0);
+
+    return {
+      ...state,
+      players: newPlayers,
+      revealHistory: newRevealHistory,
+      waitingForPlayers: [],
+      currentRound: state.currentRound + 1,
+      phase: allRevealed ? "showdown" : "revealing",
+    };
+  }
+
+  return {
+    ...state,
+    players: newPlayers,
+    revealHistory: newRevealHistory,
+    waitingForPlayers: newWaitingForPlayers,
+  };
+}
+
+// Legacy function for auto-reveal (used in local mode)
 export function processRevealRound(state: GameState): GameState {
   if (state.phase !== "revealing") {
     return state;
@@ -125,7 +221,6 @@ export function processRevealRound(state: GameState): GameState {
   const weakestPlayers = findWeakestPlayers(state.players);
 
   if (weakestPlayers.length === 0) {
-    // All players have revealed all hole cards
     return {
       ...state,
       phase: "showdown",
@@ -134,7 +229,6 @@ export function processRevealRound(state: GameState): GameState {
 
   const revealedCards: { playerId: number; card: Card }[] = [];
 
-  // Create new player array with revealed cards
   const newPlayers = state.players.map((player) => {
     if (weakestPlayers.some((wp) => wp.id === player.id)) {
       if (player.holeCards.length > 0) {
@@ -156,7 +250,6 @@ export function processRevealRound(state: GameState): GameState {
     cards: revealedCards,
   };
 
-  // Check if all hole cards are revealed
   const allRevealed = newPlayers.every((p) => p.holeCards.length === 0);
 
   return {
@@ -165,6 +258,7 @@ export function processRevealRound(state: GameState): GameState {
     currentRound: state.currentRound + 1,
     revealHistory: [...state.revealHistory, event],
     phase: allRevealed ? "showdown" : "revealing",
+    waitingForPlayers: [],
   };
 }
 
@@ -178,7 +272,6 @@ export function determineWinner(state: GameState): GameState {
     strength: getFinalStrength(p),
   }));
 
-  // Find the maximum strength
   let maxStrength = finalStrengths[0].strength.strength;
   for (const s of finalStrengths) {
     if (s.strength.strength > maxStrength) {
@@ -186,7 +279,6 @@ export function determineWinner(state: GameState): GameState {
     }
   }
 
-  // Find all players with maximum strength (could be ties)
   const winners = finalStrengths
     .filter((s) => s.strength.strength === maxStrength)
     .map((s) => s.player);
@@ -201,12 +293,10 @@ export function determineWinner(state: GameState): GameState {
 export function runFullGame(state: GameState): GameState {
   let currentState = state;
 
-  // Run all reveal rounds
   while (currentState.phase === "revealing") {
     currentState = processRevealRound(currentState);
   }
 
-  // Determine winner
   if (currentState.phase === "showdown") {
     currentState = determineWinner(currentState);
   }
