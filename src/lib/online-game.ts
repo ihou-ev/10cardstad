@@ -248,6 +248,7 @@ export async function createRoom(hostName: string): Promise<{ room: GameRoom; pl
       player_id: playerId,
       player_name: hostName,
       slot: 0,
+      is_online: true,
     });
 
   if (joinError) {
@@ -314,6 +315,7 @@ export async function joinRoomById(
       player_id: playerId,
       player_name: playerName,
       slot,
+      is_online: true,
     });
 
   if (joinError) {
@@ -414,7 +416,7 @@ export async function autoPlayForOfflinePlayers(
 ): Promise<GameState | null> {
   // Find offline players who need to reveal
   const offlinePlayerSlots = roomPlayers
-    .filter((p) => !p.is_online)
+    .filter((p) => p.is_online === false)
     .map((p) => p.slot);
 
   const waitingOffline = currentState.waitingForPlayers.filter((slot) =>

@@ -170,7 +170,7 @@ export function App() {
 
     // Check if any offline players need to reveal
     const offlinePlayerSlots = roomPlayers
-      .filter((p) => !p.is_online)
+      .filter((p) => p.is_online === false)
       .map((p) => p.slot);
 
     const waitingOffline = state.gameState.waitingForPlayers.filter((slot) =>
