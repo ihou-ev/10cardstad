@@ -7,6 +7,7 @@ import {
   createRoom,
   joinRoomById,
   leaveRoom,
+  markPlayerOffline,
   getRoomPlayers,
   startGame,
   revealCardOnline,
@@ -155,11 +156,17 @@ export function App() {
     };
   }, [roomId]);
 
-  // Auto-play for offline players (host triggers this)
+  // Auto-play for offline players (lowest slot online player triggers this)
   useEffect(() => {
     if (state.type !== "playing") return;
-    if (state.room.host_id !== playerId) return; // Only host triggers auto-play
     if (state.gameState.phase !== "revealing") return;
+
+    // Find the lowest slot online player to be the trigger
+    const onlinePlayers = roomPlayers.filter((p) => p.is_online !== false);
+    if (onlinePlayers.length === 0) return;
+
+    const triggerPlayer = onlinePlayers.reduce((a, b) => a.slot < b.slot ? a : b);
+    if (triggerPlayer.slot !== state.mySlot) return; // Only the lowest slot triggers
 
     // Check if any offline players need to reveal
     const offlinePlayerSlots = roomPlayers
@@ -286,8 +293,12 @@ export function App() {
   }, [state]);
 
   const handleLeave = useCallback(async () => {
-    if (state.type === "waiting" || state.type === "playing") {
+    if (state.type === "waiting") {
+      // In waiting room, fully leave
       await leaveRoom(state.room.id);
+    } else if (state.type === "playing") {
+      // During game, mark as offline (auto-play will take over)
+      await markPlayerOffline(state.room.id);
     }
     setState({ type: "lobby" });
   }, [state]);

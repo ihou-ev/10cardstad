@@ -575,6 +575,11 @@ export async function revealCardOnline(
     return null;
   }
 
+  // If game finished, remove offline players
+  if (newState.phase === "finished") {
+    await removeOfflinePlayers(roomId);
+  }
+
   return newState;
 }
 
