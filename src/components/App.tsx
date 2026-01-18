@@ -5,7 +5,7 @@ import { GameState } from "@/lib/game";
 import { GameRoom, RoomPlayer } from "@/lib/supabase";
 import {
   createRoom,
-  joinRoom,
+  joinRoomById,
   leaveRoom,
   getRoomPlayers,
   startGame,
@@ -119,11 +119,11 @@ export function App() {
     setIsLoading(false);
   }, []);
 
-  const handleJoinRoom = useCallback(async (roomCode: string, playerName: string) => {
+  const handleJoinRoom = useCallback(async (roomId: string, playerName: string) => {
     setIsLoading(true);
     setError(null);
 
-    const result = await joinRoom(roomCode, playerName);
+    const result = await joinRoomById(roomId, playerName);
 
     if (result) {
       const players = await getRoomPlayers(result.room.id);
@@ -134,7 +134,7 @@ export function App() {
         mySlot: result.slot,
       });
     } else {
-      setError("ルームへの参加に失敗しました。コードを確認してください。");
+      setError("ルームへの参加に失敗しました。");
     }
 
     setIsLoading(false);

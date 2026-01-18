@@ -1,20 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { RoomWithPlayerCount, getWaitingRooms, subscribeToLobby } from "@/lib/online-game";
 
 interface LobbyProps {
   onCreateRoom: (playerName: string) => void;
-  onJoinRoom: (roomCode: string, playerName: string) => void;
+  onJoinRoom: (roomId: string, playerName: string) => void;
   onPlayLocal: () => void;
   isLoading: boolean;
   error: string | null;
 }
 
 export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error }: LobbyProps) {
-  const [mode, setMode] = useState<"menu" | "create" | "join">("menu");
   const [playerName, setPlayerName] = useState("");
-  const [roomCode, setRoomCode] = useState("");
+  const [rooms, setRooms] = useState<RoomWithPlayerCount[]>([]);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(true);
+
+  const fetchRooms = useCallback(async () => {
+    const waitingRooms = await getWaitingRooms();
+    setRooms(waitingRooms);
+    setIsLoadingRooms(false);
+  }, []);
+
+  useEffect(() => {
+    fetchRooms();
+
+    // Subscribe to lobby updates
+    const unsubscribe = subscribeToLobby(() => {
+      fetchRooms();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [fetchRooms]);
 
   const handleCreateRoom = () => {
     if (playerName.trim()) {
@@ -22,18 +42,18 @@ export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error 
     }
   };
 
-  const handleJoinRoom = () => {
-    if (playerName.trim() && roomCode.trim()) {
-      onJoinRoom(roomCode.trim().toUpperCase(), playerName.trim());
+  const handleJoinRoom = (roomId: string) => {
+    if (playerName.trim()) {
+      onJoinRoom(roomId, playerName.trim());
     }
   };
 
   return (
     <div className="min-h-dvh bg-slate-900 text-white flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-lg">
         <h1 className="text-3xl font-bold text-center mb-2 text-balance">10カードスタッド</h1>
-        <p className="text-slate-400 text-center mb-8 text-pretty">
-          5人のプレイヤーが10枚のカードから最強の5枚を選んで勝負
+        <p className="text-slate-400 text-center mb-6 text-pretty">
+          2〜5人のプレイヤーが10枚のカードから最強の5枚を選んで勝負
         </p>
 
         {error && (
@@ -42,121 +62,105 @@ export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error 
           </div>
         )}
 
-        {mode === "menu" && (
-          <div className="space-y-3">
-            <button
-              onClick={() => setMode("create")}
-              className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-medium text-lg transition-colors"
-            >
-              ルームを作成
-            </button>
-            <button
-              onClick={() => setMode("join")}
-              className="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-xl font-medium text-lg transition-colors"
-            >
-              ルームに参加
-            </button>
-            <div className="relative py-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-700" />
-              </div>
-              <div className="relative flex justify-center">
-                <span className="px-3 bg-slate-900 text-slate-500 text-sm">または</span>
-              </div>
-            </div>
-            <button
-              onClick={onPlayLocal}
-              className="w-full py-4 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium text-lg transition-colors"
-            >
-              ローカルでプレイ
-            </button>
-          </div>
-        )}
+        {/* Name Input */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
+            あなたの名前
+          </label>
+          <input
+            type="text"
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
+            placeholder="名前を入力してください"
+            maxLength={20}
+            className="w-full px-4 py-3 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+          />
+        </div>
 
-        {mode === "create" && (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                あなたの名前
-              </label>
-              <input
-                type="text"
-                value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
-                placeholder="名前を入力"
-                maxLength={20}
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-              />
-            </div>
+        {/* Room List */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-medium text-slate-300">待機中のルーム</h2>
             <button
-              onClick={handleCreateRoom}
-              disabled={!playerName.trim() || isLoading}
-              className={cn(
-                "w-full py-4 rounded-xl font-medium text-lg transition-colors",
-                playerName.trim() && !isLoading
-                  ? "bg-emerald-600 hover:bg-emerald-500"
-                  : "bg-slate-700 text-slate-500 cursor-not-allowed"
-              )}
+              onClick={fetchRooms}
+              className="text-xs text-slate-400 hover:text-white transition-colors"
             >
-              {isLoading ? "作成中..." : "ルームを作成"}
-            </button>
-            <button
-              onClick={() => setMode("menu")}
-              className="w-full py-3 text-slate-400 hover:text-white transition-colors"
-            >
-              戻る
+              更新
             </button>
           </div>
-        )}
 
-        {mode === "join" && (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                あなたの名前
-              </label>
-              <input
-                type="text"
-                value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
-                placeholder="名前を入力"
-                maxLength={20}
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                ルームコード
-              </label>
-              <input
-                type="text"
-                value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                placeholder="6文字のコード"
-                maxLength={6}
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent uppercase tracking-widest text-center text-xl font-mono tabular-nums"
-              />
-            </div>
-            <button
-              onClick={handleJoinRoom}
-              disabled={!playerName.trim() || roomCode.length !== 6 || isLoading}
-              className={cn(
-                "w-full py-4 rounded-xl font-medium text-lg transition-colors",
-                playerName.trim() && roomCode.length === 6 && !isLoading
-                  ? "bg-blue-600 hover:bg-blue-500"
-                  : "bg-slate-700 text-slate-500 cursor-not-allowed"
-              )}
-            >
-              {isLoading ? "参加中..." : "ルームに参加"}
-            </button>
-            <button
-              onClick={() => setMode("menu")}
-              className="w-full py-3 text-slate-400 hover:text-white transition-colors"
-            >
-              戻る
-            </button>
+          <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+            {isLoadingRooms ? (
+              <div className="p-8 text-center text-slate-500">
+                読み込み中...
+              </div>
+            ) : rooms.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">
+                待機中のルームがありません
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-700">
+                {rooms.map((room) => (
+                  <div
+                    key={room.id}
+                    className="flex items-center justify-between p-4 hover:bg-slate-700/50 transition-colors"
+                  >
+                    <div>
+                      <div className="font-medium">{room.host_name} のルーム</div>
+                      <div className="text-sm text-slate-400">
+                        <span className="tabular-nums">{room.player_count}</span>/5人
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleJoinRoom(room.id)}
+                      disabled={!playerName.trim() || isLoading || room.player_count >= 5}
+                      className={cn(
+                        "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                        playerName.trim() && !isLoading && room.player_count < 5
+                          ? "bg-blue-600 hover:bg-blue-500"
+                          : "bg-slate-700 text-slate-500 cursor-not-allowed"
+                      )}
+                    >
+                      {room.player_count >= 5 ? "満員" : "参加"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Actions */}
+        <div className="space-y-3">
+          <button
+            onClick={handleCreateRoom}
+            disabled={!playerName.trim() || isLoading}
+            className={cn(
+              "w-full py-4 rounded-xl font-medium text-lg transition-colors",
+              playerName.trim() && !isLoading
+                ? "bg-emerald-600 hover:bg-emerald-500"
+                : "bg-slate-700 text-slate-500 cursor-not-allowed"
+            )}
+          >
+            {isLoading ? "作成中..." : "新しいルームを作成"}
+          </button>
+
+          <div className="relative py-2">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-700" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="px-3 bg-slate-900 text-slate-500 text-sm">または</span>
+            </div>
+          </div>
+
+          <button
+            onClick={onPlayLocal}
+            className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition-colors"
+          >
+            ローカルでプレイ
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -28,6 +28,92 @@ export function getPlayerId(): string {
   return playerId;
 }
 
+// Room with player count for lobby display
+export interface RoomWithPlayerCount {
+  id: string;
+  room_code: string;
+  host_id: string;
+  host_name: string;
+  player_count: number;
+  created_at: string;
+}
+
+// Get all waiting rooms
+export async function getWaitingRooms(): Promise<RoomWithPlayerCount[]> {
+  const supabase = getSupabase();
+
+  // Get waiting rooms
+  const { data: rooms, error: roomsError } = await supabase
+    .from("game_rooms")
+    .select("id, room_code, host_id, created_at")
+    .eq("status", "waiting")
+    .order("created_at", { ascending: false });
+
+  if (roomsError || !rooms) {
+    console.error("Failed to fetch rooms:", roomsError);
+    return [];
+  }
+
+  // Get player counts for each room
+  const roomsWithCounts: RoomWithPlayerCount[] = [];
+
+  for (const room of rooms) {
+    const { data: players } = await supabase
+      .from("room_players")
+      .select("player_name, slot")
+      .eq("room_id", room.id)
+      .order("slot");
+
+    if (players && players.length > 0) {
+      roomsWithCounts.push({
+        id: room.id,
+        room_code: room.room_code,
+        host_id: room.host_id,
+        host_name: players[0]?.player_name || "Unknown",
+        player_count: players.length,
+        created_at: room.created_at,
+      });
+    }
+  }
+
+  return roomsWithCounts;
+}
+
+// Subscribe to lobby updates (room list changes)
+export function subscribeToLobby(onUpdate: () => void) {
+  const supabase = getSupabase();
+
+  const channel = supabase
+    .channel("lobby")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "game_rooms",
+      },
+      () => {
+        onUpdate();
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "room_players",
+      },
+      () => {
+        onUpdate();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
 // Create a new room
 export async function createRoom(hostName: string): Promise<{ room: GameRoom; playerId: string } | null> {
   const supabase = getSupabase();
@@ -68,9 +154,9 @@ export async function createRoom(hostName: string): Promise<{ room: GameRoom; pl
   return { room: room as GameRoom, playerId };
 }
 
-// Join an existing room
-export async function joinRoom(
-  roomCode: string,
+// Join an existing room by ID
+export async function joinRoomById(
+  roomId: string,
   playerName: string
 ): Promise<{ room: GameRoom; playerId: string; slot: number } | null> {
   const supabase = getSupabase();
@@ -80,7 +166,7 @@ export async function joinRoom(
   const { data: room, error: roomError } = await supabase
     .from("game_rooms")
     .select()
-    .eq("room_code", roomCode.toUpperCase())
+    .eq("id", roomId)
     .single();
 
   if (roomError || !room) {
