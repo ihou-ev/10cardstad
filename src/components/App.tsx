@@ -136,6 +136,8 @@ export function App() {
       },
       (players) => {
         console.log("Players updated:", players.length, players.map(p => ({ slot: p.slot, is_online: p.is_online })));
+        console.log("Current state when players updated:", stateRef.current.type,
+          stateRef.current.type === "playing" ? stateRef.current.gameState.phase : "N/A");
         setRoomPlayers(players);
         // Players updated
         setState((prev) => {
@@ -158,8 +160,20 @@ export function App() {
 
   // Auto-play for offline players (lowest slot online player triggers this)
   useEffect(() => {
-    if (state.type !== "playing") return;
-    if (state.gameState.phase !== "revealing") return;
+    console.log("Auto-play effect running:", {
+      stateType: state.type,
+      phase: state.type === "playing" ? state.gameState.phase : "N/A",
+      roomPlayersCount: roomPlayers.length,
+    });
+
+    if (state.type !== "playing") {
+      console.log("Skipping: state type is not playing");
+      return;
+    }
+    if (state.gameState.phase !== "revealing") {
+      console.log("Skipping: phase is not revealing, it's", state.gameState.phase);
+      return;
+    }
 
     console.log("Auto-play check:", {
       roomPlayers: roomPlayers.map(p => ({ slot: p.slot, is_online: p.is_online })),
