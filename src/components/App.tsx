@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { GameState } from "@/lib/game";
 import { GameRoom, RoomPlayer } from "@/lib/supabase";
 import {
@@ -28,21 +28,37 @@ export function App() {
   const [state, setState] = useState<AppState>({ type: "lobby" });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const stateRef = useRef(state);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const playerId = typeof window !== "undefined" ? getPlayerId() : "";
 
+  // Get roomId from state
+  const roomId = (state.type === "waiting" || state.type === "playing") ? state.room.id : null;
+
   // Subscribe to room updates when in waiting or playing state
   useEffect(() => {
-    if (state.type !== "waiting" && state.type !== "playing") return;
+    if (!roomId) return;
 
-    const roomId = state.room.id;
+    console.log("Subscribing to room:", roomId);
 
     const unsubscribe = subscribeToRoom(
       roomId,
       (updatedRoom) => {
+        console.log("Room updated:", updatedRoom.status, updatedRoom.game_state ? "has game_state" : "no game_state");
+
         // Room updated
         if (updatedRoom.status === "playing" && updatedRoom.game_state) {
-          const gameState = JSON.parse(updatedRoom.game_state as string) as GameState;
+          const gameState = JSON.parse(
+            typeof updatedRoom.game_state === "string"
+              ? updatedRoom.game_state
+              : JSON.stringify(updatedRoom.game_state)
+          ) as GameState;
+
           setState((prev) => {
             if (prev.type === "waiting" || prev.type === "playing") {
               return {
@@ -64,6 +80,7 @@ export function App() {
         }
       },
       (players) => {
+        console.log("Players updated:", players.length);
         // Players updated
         setState((prev) => {
           if (prev.type === "waiting") {
@@ -75,9 +92,10 @@ export function App() {
     );
 
     return () => {
+      console.log("Unsubscribing from room:", roomId);
       unsubscribe();
     };
-  }, [state.type, state.type === "waiting" || state.type === "playing" ? state.room.id : null]);
+  }, [roomId]);
 
   const handleCreateRoom = useCallback(async (playerName: string) => {
     setIsLoading(true);

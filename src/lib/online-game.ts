@@ -242,12 +242,13 @@ export function subscribeToRoom(
     .on(
       "postgres_changes",
       {
-        event: "*",
+        event: "UPDATE",
         schema: "public",
         table: "game_rooms",
         filter: `id=eq.${roomId}`,
       },
       (payload) => {
+        console.log("Realtime: game_rooms UPDATE received", payload);
         if (payload.new) {
           onRoomUpdate(payload.new as GameRoom);
         }
@@ -261,13 +262,16 @@ export function subscribeToRoom(
         table: "room_players",
         filter: `room_id=eq.${roomId}`,
       },
-      async () => {
+      async (payload) => {
+        console.log("Realtime: room_players change received", payload);
         // Refetch all players on any change
         const players = await getRoomPlayers(roomId);
         onPlayersUpdate(players);
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log("Realtime subscription status:", status);
+    });
 
   return () => {
     supabase.removeChannel(roomChannel);
