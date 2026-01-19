@@ -189,14 +189,13 @@ export function GameBoard({ onBack }: GameBoardProps) {
                       key={diff}
                       onClick={() => setDifficulty(diff)}
                       className={cn(
-                        "px-4 py-3 rounded-lg text-sm font-medium transition-colors border-2",
+                        "px-4 py-3 rounded-lg font-medium transition-colors border-2",
                         isSelected
                           ? "bg-emerald-600 border-emerald-400 text-white"
                           : "bg-slate-800 border-slate-600 text-slate-300 hover:border-slate-500"
                       )}
                     >
-                      <div className="font-bold">{config.name}</div>
-                      <div className="text-xs opacity-75">{config.description}</div>
+                      {config.name}
                     </button>
                   );
                 })}
