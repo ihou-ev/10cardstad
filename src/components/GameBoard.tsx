@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   GameState,
+  Difficulty,
+  DIFFICULTY_CONFIGS,
   initializeGame,
   startRevealRound,
   revealSelectedCard,
@@ -13,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { playCardFlipSound, playWinnerSound } from "@/lib/sounds";
 
 const BOT_NAMES = ["CPU 1", "CPU 2", "CPU 3", "CPU 4"];
+const DIFFICULTIES: Difficulty[] = ["normal", "hard", "hell", "nightmare"];
 
 interface GameBoardProps {
   onBack: () => void;
@@ -20,18 +23,25 @@ interface GameBoardProps {
 
 export function GameBoard({ onBack }: GameBoardProps) {
   const [playerName, setPlayerName] = useState("");
+  const [difficulty, setDifficulty] = useState<Difficulty>("normal");
   const [gameState, setGameState] = useState<GameState | null>(null);
 
   // Track previous state for sound effects
   const prevRevealCount = useRef(0);
   const prevPhase = useRef<string | null>(null);
 
-  const startNewGame = useCallback(() => {
+  const startNewGame = useCallback((diff: Difficulty = difficulty) => {
     if (!playerName.trim()) return;
-    const state = initializeGame([playerName.trim(), ...BOT_NAMES]);
-    const stateWithRound = startRevealRound(state);
-    setGameState(stateWithRound);
-  }, [playerName]);
+    const state = initializeGame([playerName.trim(), ...BOT_NAMES], diff);
+    // For nightmare mode (no hole cards), go straight to determining winner
+    if (state.phase === "showdown") {
+      const finalState = determineWinner(state);
+      setGameState(finalState);
+    } else {
+      const stateWithRound = startRevealRound(state);
+      setGameState(stateWithRound);
+    }
+  }, [playerName, difficulty]);
 
   // Player selects a card to reveal
   const handleSelectCard = useCallback((cardId: string) => {
@@ -143,6 +153,9 @@ export function GameBoard({ onBack }: GameBoardProps) {
             {gameState && (
               <p className="text-slate-400 text-sm">
                 あなた: {gameState.players[0]?.name}
+                <span className="ml-2 text-amber-400">
+                  [{DIFFICULTY_CONFIGS[difficulty].name}]
+                </span>
               </p>
             )}
           </div>
@@ -157,7 +170,7 @@ export function GameBoard({ onBack }: GameBoardProps) {
 
       <main className="max-w-6xl mx-auto">
         {!gameState ? (
-          <div className="flex flex-col items-center justify-center py-20 max-w-md mx-auto">
+          <div className="flex flex-col items-center justify-center py-12 max-w-md mx-auto">
             <p className="text-slate-400 mb-6 text-center text-pretty">
               4人のCPUと対戦します。名前を入力してゲームを開始してください。
             </p>
@@ -167,10 +180,37 @@ export function GameBoard({ onBack }: GameBoardProps) {
               onChange={(e) => setPlayerName(e.target.value)}
               placeholder="あなたの名前"
               maxLength={20}
-              className="w-full px-4 py-3 mb-4 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              className="w-full px-4 py-3 mb-6 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             />
+
+            {/* Difficulty Selection */}
+            <div className="w-full mb-6">
+              <p className="text-sm text-slate-400 mb-3 text-center">難易度を選択</p>
+              <div className="grid grid-cols-2 gap-2">
+                {DIFFICULTIES.map((diff) => {
+                  const config = DIFFICULTY_CONFIGS[diff];
+                  const isSelected = difficulty === diff;
+                  return (
+                    <button
+                      key={diff}
+                      onClick={() => setDifficulty(diff)}
+                      className={cn(
+                        "px-4 py-3 rounded-lg text-sm font-medium transition-colors border-2",
+                        isSelected
+                          ? "bg-emerald-600 border-emerald-400 text-white"
+                          : "bg-slate-800 border-slate-600 text-slate-300 hover:border-slate-500"
+                      )}
+                    >
+                      <div className="font-bold">{config.name}</div>
+                      <div className="text-xs opacity-75">{config.description}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <button
-              onClick={startNewGame}
+              onClick={() => startNewGame()}
               disabled={!playerName.trim()}
               className={cn(
                 "w-full px-6 py-3 rounded-lg font-medium transition-colors",
@@ -243,18 +283,28 @@ export function GameBoard({ onBack }: GameBoardProps) {
                     ? `${gameState.winner[0].name} の勝利!`
                     : `引き分け: ${gameState.winner.map((p) => p.name).join(", ")}`}
                 </h2>
-                <button
-                  onClick={() => {
-                    const state = initializeGame([playerName.trim(), ...BOT_NAMES]);
-                    const stateWithRound = startRevealRound(state);
-                    setGameState(stateWithRound);
-                    prevRevealCount.current = 0;
-                    prevPhase.current = null;
-                  }}
-                  className="mt-4 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-medium transition-colors"
-                >
-                  もう一度プレイ
-                </button>
+                <div className="mt-4 flex flex-col sm:flex-row gap-3 justify-center">
+                  <button
+                    onClick={() => {
+                      prevRevealCount.current = 0;
+                      prevPhase.current = null;
+                      startNewGame(difficulty);
+                    }}
+                    className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-medium transition-colors"
+                  >
+                    もう一度プレイ
+                  </button>
+                  <button
+                    onClick={() => {
+                      setGameState(null);
+                      prevRevealCount.current = 0;
+                      prevPhase.current = null;
+                    }}
+                    className="px-6 py-3 bg-slate-600 hover:bg-slate-500 rounded-xl font-medium transition-colors"
+                  >
+                    難易度を変更
+                  </button>
+                </div>
               </div>
             )}
           </>

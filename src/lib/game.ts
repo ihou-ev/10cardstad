@@ -1,6 +1,42 @@
 import { Card, createDeck, shuffleDeck } from "./cards";
 import { findBestHand, HandResult } from "./poker";
 
+export type Difficulty = "normal" | "hard" | "hell" | "nightmare";
+
+export interface DifficultyConfig {
+  name: string;
+  holeCards: number;
+  doorCards: number;
+  description: string;
+}
+
+export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
+  normal: {
+    name: "ノーマル",
+    holeCards: 5,
+    doorCards: 5,
+    description: "隠し札5枚",
+  },
+  hard: {
+    name: "ハード",
+    holeCards: 4,
+    doorCards: 6,
+    description: "隠し札4枚",
+  },
+  hell: {
+    name: "ヘル",
+    holeCards: 2,
+    doorCards: 8,
+    description: "隠し札2枚",
+  },
+  nightmare: {
+    name: "ナイトメア",
+    holeCards: 0,
+    doorCards: 5,
+    description: "隠し札なし",
+  },
+};
+
 export interface Player {
   id: number;
   name: string;
@@ -43,19 +79,22 @@ export function getFinalStrength(player: Player): HandResult {
   return findBestHand(all);
 }
 
-export function initializeGame(playerNames: string[]): GameState {
+export function initializeGame(playerNames: string[], difficulty: Difficulty = "normal"): GameState {
   const playerCount = playerNames.length;
   if (playerCount < 2 || playerCount > 5) {
     throw new Error("Game requires 2-5 players");
   }
 
+  const config = DIFFICULTY_CONFIGS[difficulty];
+  const cardsPerPlayer = config.doorCards + config.holeCards;
+
   const deck = shuffleDeck(createDeck());
   const players: Player[] = [];
 
   for (let i = 0; i < playerCount; i++) {
-    const startIdx = i * 10;
-    const doorCards = deck.slice(startIdx, startIdx + 5);
-    const holeCards = deck.slice(startIdx + 5, startIdx + 10);
+    const startIdx = i * cardsPerPlayer;
+    const doorCards = deck.slice(startIdx, startIdx + config.doorCards);
+    const holeCards = deck.slice(startIdx + config.doorCards, startIdx + cardsPerPlayer);
 
     players.push({
       id: i,
@@ -67,12 +106,15 @@ export function initializeGame(playerNames: string[]): GameState {
   }
 
   // Remaining cards are dead cards
-  const deadCards = deck.slice(playerCount * 10);
+  const deadCards = deck.slice(playerCount * cardsPerPlayer);
+
+  // If no hole cards (nightmare mode), go straight to showdown
+  const initialPhase = config.holeCards === 0 ? "showdown" : "revealing";
 
   return {
     players,
     deadCards,
-    phase: "revealing",
+    phase: initialPhase,
     currentRound: 0,
     revealHistory: [],
     winner: null,
