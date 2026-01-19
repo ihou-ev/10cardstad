@@ -20,13 +20,13 @@ export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
   hard: {
     name: "ハード",
     holeCards: 4,
-    doorCards: 6,
+    doorCards: 5,
     description: "隠し札4枚",
   },
   hell: {
     name: "ヘル",
     holeCards: 2,
-    doorCards: 8,
+    doorCards: 5,
     description: "隠し札2枚",
   },
   nightmare: {
