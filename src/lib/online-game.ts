@@ -1,5 +1,5 @@
 import { getSupabase, GameRoom, RoomPlayer } from "./supabase";
-import { GameState, initializeGame, determineWinner, startRevealRound, revealSelectedCard } from "./game";
+import { GameState, Difficulty, initializeGame, determineWinner, startRevealRound, revealSelectedCard } from "./game";
 
 // Generate a random 6-character room code
 export function generateRoomCode(): string {
@@ -811,6 +811,29 @@ export function subscribeToRoom(
   };
 }
 
+// Record practice game completion
+export async function recordPracticeGame(
+  playerName: string,
+  difficulty: Difficulty,
+  playerWon: boolean,
+  roundsPlayed: number
+): Promise<void> {
+  const supabase = getSupabase();
+
+  const { error } = await supabase
+    .from("practice_games")
+    .insert({
+      player_name: playerName,
+      difficulty,
+      player_won: playerWon,
+      rounds_played: roundsPlayed,
+    });
+
+  if (error) {
+    console.error("Failed to record practice game:", error);
+  }
+}
+
 // Clean up orphaned rooms (rooms with no players)
 export async function cleanupOrphanedRooms(): Promise<number> {
   const supabase = getSupabase();
@@ -845,6 +868,29 @@ export async function cleanupOrphanedRooms(): Promise<number> {
   return cleanedCount;
 }
 
+// Practice game entry for admin
+export interface PracticeGameEntry {
+  id: string;
+  player_name: string;
+  difficulty: string;
+  player_won: boolean;
+  rounds_played: number;
+  created_at: string;
+}
+
+// Practice stats for admin
+export interface PracticeStats {
+  totalGames: number;
+  totalGamesToday: number;
+  winRate: number;
+  byDifficulty: {
+    difficulty: string;
+    count: number;
+    wins: number;
+  }[];
+  recentGames: PracticeGameEntry[];
+}
+
 // Admin statistics
 export interface AdminStats {
   totalGamesPlayed: number;
@@ -852,6 +898,7 @@ export interface AdminStats {
   activeRooms: number;
   activePlayers: number;
   recentGames: AdminGameEntry[];
+  practiceStats: PracticeStats;
 }
 
 export interface AdminGameEntry {
@@ -950,11 +997,66 @@ export async function getAdminStats(): Promise<AdminStats> {
     }
   }
 
+  // Get practice game stats
+  const { count: practiceTotalGames } = await supabase
+    .from("practice_games")
+    .select("*", { count: "exact", head: true });
+
+  const { count: practiceTotalGamesToday } = await supabase
+    .from("practice_games")
+    .select("*", { count: "exact", head: true })
+    .gte("created_at", today.toISOString());
+
+  const { count: practiceWins } = await supabase
+    .from("practice_games")
+    .select("*", { count: "exact", head: true })
+    .eq("player_won", true);
+
+  // Get practice games by difficulty
+  const { data: practiceByDifficulty } = await supabase
+    .from("practice_games")
+    .select("difficulty, player_won");
+
+  const difficultyStats: Record<string, { count: number; wins: number }> = {};
+  if (practiceByDifficulty) {
+    for (const game of practiceByDifficulty) {
+      if (!difficultyStats[game.difficulty]) {
+        difficultyStats[game.difficulty] = { count: 0, wins: 0 };
+      }
+      difficultyStats[game.difficulty].count++;
+      if (game.player_won) {
+        difficultyStats[game.difficulty].wins++;
+      }
+    }
+  }
+
+  const byDifficulty = Object.entries(difficultyStats).map(([difficulty, stats]) => ({
+    difficulty,
+    count: stats.count,
+    wins: stats.wins,
+  }));
+
+  // Get recent practice games (last 20)
+  const { data: recentPracticeGames } = await supabase
+    .from("practice_games")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const practiceStats: PracticeStats = {
+    totalGames: practiceTotalGames || 0,
+    totalGamesToday: practiceTotalGamesToday || 0,
+    winRate: practiceTotalGames ? ((practiceWins || 0) / practiceTotalGames) * 100 : 0,
+    byDifficulty,
+    recentGames: (recentPracticeGames || []) as PracticeGameEntry[],
+  };
+
   return {
     totalGamesPlayed: totalGamesPlayed || 0,
     totalGamesToday: totalGamesToday || 0,
     activeRooms: activeRooms || 0,
     activePlayers: activePlayers || 0,
     recentGames,
+    practiceStats,
   };
 }

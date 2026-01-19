@@ -13,6 +13,7 @@ import {
 import { PlayerArea } from "./PlayerArea";
 import { cn } from "@/lib/utils";
 import { playCardFlipSound, playWinnerSound } from "@/lib/sounds";
+import { recordPracticeGame } from "@/lib/online-game";
 
 const BOT_NAMES = ["CPU 1", "CPU 2", "CPU 3", "CPU 4"];
 const DIFFICULTIES: Difficulty[] = ["normal", "hard", "hell", "nightmare"];
@@ -118,15 +119,24 @@ export function GameBoard({ onBack }: GameBoardProps) {
     prevRevealCount.current = currentRevealCount;
   }, [gameState?.revealHistory]);
 
-  // Play sound when winner is determined
+  // Play sound and record stats when winner is determined
   useEffect(() => {
     if (!gameState) return;
 
     if (prevPhase.current !== "finished" && gameState.phase === "finished") {
       playWinnerSound();
+
+      // Record practice game stats
+      const playerWon = gameState.winner?.some((w) => w.id === 0) ?? false;
+      recordPracticeGame(
+        playerName,
+        difficulty,
+        playerWon,
+        gameState.currentRound
+      );
     }
     prevPhase.current = gameState.phase;
-  }, [gameState?.phase]);
+  }, [gameState?.phase, gameState?.winner, gameState?.currentRound, playerName, difficulty]);
 
   const waitingPlayerIds = gameState?.waitingForPlayers
     ? new Set(gameState.waitingForPlayers)

@@ -69,3 +69,22 @@ CREATE INDEX idx_room_players ON room_players(room_id);
 
 -- Clean up old rooms (optional: run periodically)
 -- DELETE FROM game_rooms WHERE created_at < NOW() - INTERVAL '24 hours';
+
+-- Practice Games table (for tracking practice mode usage)
+CREATE TABLE practice_games (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  player_name VARCHAR(50) NOT NULL,
+  difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('normal', 'hard', 'hell', 'nightmare')),
+  player_won BOOLEAN NOT NULL,
+  rounds_played INTEGER NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- RLS Policies for practice_games
+ALTER TABLE practice_games ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can read practice games" ON practice_games
+  FOR SELECT USING (true);
+
+CREATE POLICY "Anyone can record practice games" ON practice_games
+  FOR INSERT WITH CHECK (true);

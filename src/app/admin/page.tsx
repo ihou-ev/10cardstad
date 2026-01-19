@@ -26,6 +26,21 @@ function formatStatus(status: string): { text: string; color: string } {
   }
 }
 
+function formatDifficulty(difficulty: string): { text: string; color: string } {
+  switch (difficulty) {
+    case "normal":
+      return { text: "ノーマル", color: "bg-green-600" };
+    case "hard":
+      return { text: "ハード", color: "bg-yellow-600" };
+    case "hell":
+      return { text: "ヘル", color: "bg-orange-600" };
+    case "nightmare":
+      return { text: "ナイトメア", color: "bg-red-600" };
+    default:
+      return { text: difficulty, color: "bg-slate-600" };
+  }
+}
+
 export default function AdminPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -77,7 +92,8 @@ export default function AdminPage() {
 
         {stats && (
           <>
-            {/* Stats Cards */}
+            {/* Online Stats Section */}
+            <h2 className="text-lg font-semibold mb-4">オンライン対戦</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
               <div className="bg-slate-800 rounded-xl p-4">
                 <div className="text-3xl font-bold text-emerald-400 tabular-nums">
@@ -105,9 +121,125 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Recent Games */}
+            {/* Practice Stats Section */}
+            <h2 className="text-lg font-semibold mb-4">プラクティスモード</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              <div className="bg-slate-800 rounded-xl p-4">
+                <div className="text-3xl font-bold text-emerald-400 tabular-nums">
+                  {stats.practiceStats.totalGames}
+                </div>
+                <div className="text-sm text-slate-400">総プレイ数</div>
+              </div>
+              <div className="bg-slate-800 rounded-xl p-4">
+                <div className="text-3xl font-bold text-blue-400 tabular-nums">
+                  {stats.practiceStats.totalGamesToday}
+                </div>
+                <div className="text-sm text-slate-400">今日のプレイ</div>
+              </div>
+              <div className="bg-slate-800 rounded-xl p-4">
+                <div className="text-3xl font-bold text-amber-400 tabular-nums">
+                  {stats.practiceStats.winRate.toFixed(1)}%
+                </div>
+                <div className="text-sm text-slate-400">プレイヤー勝率</div>
+              </div>
+              <div className="bg-slate-800 rounded-xl p-4">
+                <div className="text-sm text-slate-400 mb-2">難易度別</div>
+                {stats.practiceStats.byDifficulty.length === 0 ? (
+                  <div className="text-slate-500 text-xs">データなし</div>
+                ) : (
+                  <div className="space-y-1">
+                    {stats.practiceStats.byDifficulty.map((d) => {
+                      const diffInfo = formatDifficulty(d.difficulty);
+                      return (
+                        <div key={d.difficulty} className="flex items-center justify-between text-xs">
+                          <span className={cn("px-1.5 py-0.5 rounded", diffInfo.color)}>
+                            {diffInfo.text}
+                          </span>
+                          <span className="tabular-nums text-slate-300">
+                            {d.wins}/{d.count}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Recent Practice Games */}
+            <div className="mb-8">
+              <h2 className="text-lg font-semibold mb-4">最近のプラクティス</h2>
+              <div className="bg-slate-800 rounded-xl overflow-hidden">
+                {stats.practiceStats.recentGames.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500">
+                    プラクティス履歴がありません
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-700">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-slate-300">
+                            プレイヤー
+                          </th>
+                          <th className="px-4 py-3 text-left font-medium text-slate-300">
+                            難易度
+                          </th>
+                          <th className="px-4 py-3 text-left font-medium text-slate-300">
+                            結果
+                          </th>
+                          <th className="px-4 py-3 text-left font-medium text-slate-300">
+                            ラウンド
+                          </th>
+                          <th className="px-4 py-3 text-left font-medium text-slate-300">
+                            日時
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-700">
+                        {stats.practiceStats.recentGames.map((game) => {
+                          const diffInfo = formatDifficulty(game.difficulty);
+                          return (
+                            <tr key={game.id} className="hover:bg-slate-700/50">
+                              <td className="px-4 py-3 text-slate-300">
+                                {game.player_name}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span
+                                  className={cn(
+                                    "px-2 py-1 rounded text-xs font-medium",
+                                    diffInfo.color
+                                  )}
+                                >
+                                  {diffInfo.text}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                {game.player_won ? (
+                                  <span className="text-amber-400">勝利</span>
+                                ) : (
+                                  <span className="text-slate-500">敗北</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 tabular-nums text-slate-400">
+                                {game.rounds_played}
+                              </td>
+                              <td className="px-4 py-3 tabular-nums text-slate-400">
+                                {formatDateTime(game.created_at)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Recent Online Games */}
             <div>
-              <h2 className="text-lg font-semibold mb-4">最近のゲーム</h2>
+              <h2 className="text-lg font-semibold mb-4">最近のオンラインゲーム</h2>
               <div className="bg-slate-800 rounded-xl overflow-hidden">
                 {stats.recentGames.length === 0 ? (
                   <div className="p-8 text-center text-slate-500">
