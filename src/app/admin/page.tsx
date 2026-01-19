@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { AdminStats, getAdminStats } from "@/lib/online-game";
+import { AdminStats, getAdminStats, cleanupOrphanedRooms } from "@/lib/online-game";
 import { cn } from "@/lib/utils";
 
 function formatDateTime(dateString: string): string {

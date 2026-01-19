@@ -216,6 +216,12 @@ export async function getWaitingRooms(): Promise<RoomWithPlayerCount[]> {
         player_count: players.length,
         created_at: room.created_at,
       });
+    } else {
+      // Clean up orphaned room
+      await supabase
+        .from("game_rooms")
+        .delete()
+        .eq("id", room.id);
     }
   }
 
@@ -805,6 +811,40 @@ export function subscribeToRoom(
   };
 }
 
+// Clean up orphaned rooms (rooms with no players)
+export async function cleanupOrphanedRooms(): Promise<number> {
+  const supabase = getSupabase();
+
+  // Get all waiting/playing rooms
+  const { data: rooms } = await supabase
+    .from("game_rooms")
+    .select("id")
+    .in("status", ["waiting", "playing"]);
+
+  if (!rooms || rooms.length === 0) return 0;
+
+  let cleanedCount = 0;
+
+  for (const room of rooms) {
+    // Check if room has any players
+    const { count } = await supabase
+      .from("room_players")
+      .select("*", { count: "exact", head: true })
+      .eq("room_id", room.id);
+
+    if (count === 0) {
+      // Delete orphaned room
+      await supabase
+        .from("game_rooms")
+        .delete()
+        .eq("id", room.id);
+      cleanedCount++;
+    }
+  }
+
+  return cleanedCount;
+}
+
 // Admin statistics
 export interface AdminStats {
   totalGamesPlayed: number;
@@ -826,6 +866,9 @@ export interface AdminGameEntry {
 
 export async function getAdminStats(): Promise<AdminStats> {
   const supabase = getSupabase();
+
+  // Clean up orphaned rooms first
+  await cleanupOrphanedRooms();
 
   // Get total finished games
   const { count: totalGamesPlayed } = await supabase
