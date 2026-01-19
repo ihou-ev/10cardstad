@@ -41,6 +41,10 @@ CREATE POLICY "Anyone can create rooms" ON game_rooms
 CREATE POLICY "Anyone can update rooms" ON game_rooms
   FOR UPDATE USING (true);
 
+-- Allow anyone to delete rooms (for cleanup)
+CREATE POLICY "Anyone can delete rooms" ON game_rooms
+  FOR DELETE USING (true);
+
 -- Allow anyone to read players
 CREATE POLICY "Anyone can read players" ON room_players
   FOR SELECT USING (true);
