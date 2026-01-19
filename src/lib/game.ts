@@ -85,16 +85,20 @@ export function initializeGame(playerNames: string[], difficulty: Difficulty = "
     throw new Error("Game requires 2-5 players");
   }
 
-  const config = DIFFICULTY_CONFIGS[difficulty];
-  const cardsPerPlayer = config.doorCards + config.holeCards;
+  const playerConfig = DIFFICULTY_CONFIGS[difficulty];
+  const normalConfig = DIFFICULTY_CONFIGS["normal"];
 
   const deck = shuffleDeck(createDeck());
   const players: Player[] = [];
+  let cardIndex = 0;
 
   for (let i = 0; i < playerCount; i++) {
-    const startIdx = i * cardsPerPlayer;
-    const doorCards = deck.slice(startIdx, startIdx + config.doorCards);
-    const holeCards = deck.slice(startIdx + config.doorCards, startIdx + cardsPerPlayer);
+    // Player 0 uses selected difficulty, others use normal
+    const config = i === 0 ? playerConfig : normalConfig;
+    const doorCards = deck.slice(cardIndex, cardIndex + config.doorCards);
+    cardIndex += config.doorCards;
+    const holeCards = deck.slice(cardIndex, cardIndex + config.holeCards);
+    cardIndex += config.holeCards;
 
     players.push({
       id: i,
@@ -106,10 +110,12 @@ export function initializeGame(playerNames: string[], difficulty: Difficulty = "
   }
 
   // Remaining cards are dead cards
-  const deadCards = deck.slice(playerCount * cardsPerPlayer);
+  const deadCards = deck.slice(cardIndex);
 
-  // If no hole cards (nightmare mode), go straight to showdown
-  const initialPhase = config.holeCards === 0 ? "showdown" : "revealing";
+  // If player has no hole cards (nightmare mode), check if all players have no hole cards
+  // Actually, only player 0 might have no hole cards, others always have 5
+  // So we stay in revealing phase unless it's a special case
+  const initialPhase = "revealing";
 
   return {
     players,

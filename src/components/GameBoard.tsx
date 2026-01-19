@@ -33,14 +33,8 @@ export function GameBoard({ onBack }: GameBoardProps) {
   const startNewGame = useCallback((diff: Difficulty = difficulty) => {
     if (!playerName.trim()) return;
     const state = initializeGame([playerName.trim(), ...BOT_NAMES], diff);
-    // For nightmare mode (no hole cards), go straight to determining winner
-    if (state.phase === "showdown") {
-      const finalState = determineWinner(state);
-      setGameState(finalState);
-    } else {
-      const stateWithRound = startRevealRound(state);
-      setGameState(stateWithRound);
-    }
+    const stateWithRound = startRevealRound(state);
+    setGameState(stateWithRound);
   }, [playerName, difficulty]);
 
   // Player selects a card to reveal
