@@ -804,3 +804,114 @@ export function subscribeToRoom(
     supabase.removeChannel(roomChannel);
   };
 }
+
+// Admin statistics
+export interface AdminStats {
+  totalGamesPlayed: number;
+  totalGamesToday: number;
+  activeRooms: number;
+  activePlayers: number;
+  recentGames: AdminGameEntry[];
+}
+
+export interface AdminGameEntry {
+  id: string;
+  status: string;
+  players: string[];
+  winner: string | null;
+  rounds: number;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export async function getAdminStats(): Promise<AdminStats> {
+  const supabase = getSupabase();
+
+  // Get total finished games
+  const { count: totalGamesPlayed } = await supabase
+    .from("game_rooms")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "finished");
+
+  // Get today's games
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const { count: totalGamesToday } = await supabase
+    .from("game_rooms")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "finished")
+    .gte("created_at", today.toISOString());
+
+  // Get active rooms (waiting + playing)
+  const { count: activeRooms } = await supabase
+    .from("game_rooms")
+    .select("*", { count: "exact", head: true })
+    .in("status", ["waiting", "playing"]);
+
+  // Get active players
+  const { count: activePlayers } = await supabase
+    .from("room_players")
+    .select("*", { count: "exact", head: true })
+    .eq("is_online", true);
+
+  // Get recent games (last 50)
+  const { data: rooms } = await supabase
+    .from("game_rooms")
+    .select("id, status, game_state, created_at")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  const recentGames: AdminGameEntry[] = [];
+  if (rooms) {
+    for (const room of rooms) {
+      let players: string[] = [];
+      let winner: string | null = null;
+      let rounds = 0;
+
+      if (room.game_state) {
+        try {
+          const gameState = JSON.parse(
+            typeof room.game_state === "string"
+              ? room.game_state
+              : JSON.stringify(room.game_state)
+          ) as GameState;
+          players = gameState.players.map((p) => p.name);
+          winner = gameState.winner?.map((w) => w.name).join(", ") || null;
+          rounds = gameState.currentRound;
+        } catch {
+          // Skip invalid game state
+        }
+      }
+
+      // If no game_state, get players from room_players
+      if (players.length === 0) {
+        const { data: roomPlayers } = await supabase
+          .from("room_players")
+          .select("player_name")
+          .eq("room_id", room.id)
+          .order("slot");
+        if (roomPlayers) {
+          players = roomPlayers.map((p) => p.player_name);
+        }
+      }
+
+      recentGames.push({
+        id: room.id,
+        status: room.status,
+        players,
+        winner,
+        rounds,
+        created_at: room.created_at,
+        finished_at: room.status === "finished" ? room.created_at : null,
+      });
+    }
+  }
+
+  return {
+    totalGamesPlayed: totalGamesPlayed || 0,
+    totalGamesToday: totalGamesToday || 0,
+    activeRooms: activeRooms || 0,
+    activePlayers: activePlayers || 0,
+    recentGames,
+  };
+}
