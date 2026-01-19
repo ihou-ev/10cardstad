@@ -160,7 +160,15 @@ export function Lobby({ onCreateRoom, onJoinRoom, onPlayLocal, isLoading, error 
                   >
                     <div>
                       <div className="font-medium text-slate-300">
-                        {room.players.join(", ")}
+                        {room.players.map((player, idx) => (
+                          <span key={idx}>
+                            {idx > 0 && ", "}
+                            <span className={player.is_online ? "" : "text-slate-500 line-through"}>
+                              {player.name}
+                            </span>
+                            {!player.is_online && <span className="text-red-400 text-xs ml-1">(退出)</span>}
+                          </span>
+                        ))}
                       </div>
                       <div className="text-sm text-slate-500">
                         ラウンド <span className="tabular-nums">{room.current_round}</span> · {formatDateTime(room.started_at)}

@@ -46,12 +46,19 @@ export interface GameHistoryEntry {
   started_at: string;
 }
 
+// Player info for playing room display
+export interface PlayingRoomPlayer {
+  name: string;
+  is_online: boolean;
+}
+
 // Playing room for lobby display
 export interface PlayingRoom {
   id: string;
-  players: string[];
+  players: PlayingRoomPlayer[];
   current_round: number;
   started_at: string;
+  all_offline: boolean;
 }
 
 // Get finished games history
@@ -127,11 +134,43 @@ export async function getPlayingRooms(): Promise<PlayingRoom[]> {
             : JSON.stringify(room.game_state)
         ) as GameState;
 
+        // Get room players to check online status
+        const { data: roomPlayers } = await supabase
+          .from("room_players")
+          .select("player_name, is_online, slot")
+          .eq("room_id", room.id)
+          .order("slot");
+
+        // Map player names with online status
+        const players: PlayingRoomPlayer[] = gameState.players.map((p) => {
+          const roomPlayer = roomPlayers?.find(rp => rp.player_name === p.name);
+          return {
+            name: p.name,
+            is_online: roomPlayer?.is_online === true,
+          };
+        });
+
+        const allOffline = players.every(p => !p.is_online);
+
+        // If all players are offline, clean up the room
+        if (allOffline) {
+          await supabase
+            .from("room_players")
+            .delete()
+            .eq("room_id", room.id);
+          await supabase
+            .from("game_rooms")
+            .delete()
+            .eq("id", room.id);
+          continue; // Don't add to list
+        }
+
         playingRooms.push({
           id: room.id,
-          players: gameState.players.map((p) => p.name),
+          players,
           current_round: gameState.currentRound + 1,
           started_at: room.created_at,
+          all_offline: allOffline,
         });
       } catch {
         // Skip invalid game state
@@ -397,16 +436,58 @@ export async function markPlayerOffline(roomId: string, playerId?: string): Prom
 
   console.log("markPlayerOffline:", { roomId, playerId: pid });
 
-  const { error } = await supabase
+  // First, check if the player exists in the room
+  const { data: existing, error: checkError } = await supabase
+    .from("room_players")
+    .select("id, player_id, is_online")
+    .eq("room_id", roomId)
+    .eq("player_id", pid)
+    .single();
+
+  console.log("markPlayerOffline - existing player:", existing, "error:", checkError);
+
+  if (!existing) {
+    console.error("Player not found in room:", { roomId, playerId: pid });
+    return;
+  }
+
+  // Perform the update and get the result
+  const { data: updated, error } = await supabase
     .from("room_players")
     .update({ is_online: false })
     .eq("room_id", roomId)
-    .eq("player_id", pid);
+    .eq("player_id", pid)
+    .select();
+
+  console.log("markPlayerOffline - update result:", updated, "error:", error);
 
   if (error) {
     console.error("Failed to mark player offline:", error);
+  } else if (!updated || updated.length === 0) {
+    console.error("Update matched 0 rows - player may not exist or RLS blocking");
   } else {
-    console.log("Successfully marked player offline");
+    console.log("Successfully marked player offline:", updated[0]);
+  }
+
+  // Check if all players are now offline - if so, clean up the room
+  const { data: allPlayers } = await supabase
+    .from("room_players")
+    .select("is_online")
+    .eq("room_id", roomId);
+
+  const allOffline = allPlayers?.every(p => p.is_online !== true);
+  console.log("All players offline check:", { allPlayers, allOffline });
+
+  if (allOffline) {
+    console.log("All players offline, cleaning up room:", roomId);
+    await supabase
+      .from("room_players")
+      .delete()
+      .eq("room_id", roomId);
+    await supabase
+      .from("game_rooms")
+      .delete()
+      .eq("id", roomId);
   }
 }
 
@@ -414,11 +495,20 @@ export async function markPlayerOffline(roomId: string, playerId?: string): Prom
 export async function removeOfflinePlayers(roomId: string): Promise<void> {
   const supabase = getSupabase();
 
-  await supabase
+  // First check who is offline
+  const { data: beforeDelete } = await supabase
+    .from("room_players")
+    .select("player_name, is_online")
+    .eq("room_id", roomId);
+  console.log("removeOfflinePlayers - before:", beforeDelete);
+
+  const { data: deleted, error } = await supabase
     .from("room_players")
     .delete()
     .eq("room_id", roomId)
-    .eq("is_online", false);
+    .or("is_online.eq.false,is_online.is.null")
+    .select();
+  console.log("removeOfflinePlayers - deleted:", deleted, "error:", error);
 }
 
 // Auto-play for offline players - select a random unrevealed card
@@ -428,13 +518,14 @@ export async function autoPlayForOfflinePlayers(
   roomPlayers: RoomPlayer[]
 ): Promise<GameState | null> {
   // Find offline players who need to reveal
-  const offlinePlayerSlots = roomPlayers
-    .filter((p) => p.is_online === false)
-    .map((p) => p.slot);
+  // A player is offline if: is_online !== true OR they don't exist in roomPlayers at all
+  const waitingOffline = currentState.waitingForPlayers.filter((slot) => {
+    const roomPlayer = roomPlayers.find(p => p.slot === slot);
+    // Offline if: not in room_players, or is_online !== true
+    return !roomPlayer || roomPlayer.is_online !== true;
+  });
 
-  const waitingOffline = currentState.waitingForPlayers.filter((slot) =>
-    offlinePlayerSlots.includes(slot)
-  );
+  console.log("autoPlayForOfflinePlayers - waitingOffline:", waitingOffline);
 
   if (waitingOffline.length === 0) {
     return null; // No offline players waiting
@@ -598,11 +689,53 @@ export async function revealCardOnline(
   return newState;
 }
 
-// Start a new game with the same players
-export async function startNewGame(roomId: string, playerNames: string[]): Promise<GameState | null> {
+// Start a new game with online players only
+export async function startNewGame(roomId: string): Promise<GameState | null> {
   const supabase = getSupabase();
 
-  // Initialize a fresh game with the same players
+  // First check current state of players
+  const { data: beforePlayers } = await supabase
+    .from("room_players")
+    .select("player_name, is_online, slot")
+    .eq("room_id", roomId)
+    .order("slot");
+  console.log("startNewGame - before cleanup:", beforePlayers);
+
+  // Remove offline players from the room (is_online = false OR is_online IS NULL)
+  const { data: deleted, error: deleteError } = await supabase
+    .from("room_players")
+    .delete()
+    .eq("room_id", roomId)
+    .or("is_online.eq.false,is_online.is.null")
+    .select();
+  console.log("startNewGame - deleted players:", deleted, "error:", deleteError);
+
+  // Get remaining online players (must have is_online = true explicitly)
+  const { data: players, error: playersError } = await supabase
+    .from("room_players")
+    .select("id, player_name, slot")
+    .eq("room_id", roomId)
+    .eq("is_online", true)
+    .order("slot");
+  console.log("startNewGame - remaining players:", players);
+
+  if (playersError || !players || players.length < 2) {
+    console.error("Not enough players to start new game:", playersError);
+    return null;
+  }
+
+  // Reassign slots to be consecutive (0, 1, 2, ...)
+  for (let i = 0; i < players.length; i++) {
+    if (players[i].slot !== i) {
+      await supabase
+        .from("room_players")
+        .update({ slot: i })
+        .eq("id", players[i].id);
+    }
+  }
+
+  // Initialize a fresh game with online players only
+  const playerNames = players.map((p) => p.player_name);
   const gameState = initializeGame(playerNames);
 
   // Start the first reveal round

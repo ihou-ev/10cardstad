@@ -10,6 +10,7 @@ interface OnlineGameBoardProps {
   gameState: GameState;
   isHost: boolean;
   mySlot: number;
+  onlinePlayerCount: number;
   onSelectCard: (cardId: string) => void;
   onNextGame: () => void;
   onLeave: () => void;
@@ -19,6 +20,7 @@ export function OnlineGameBoard({
   gameState,
   isHost,
   mySlot,
+  onlinePlayerCount,
   onSelectCard,
   onNextGame,
   onLeave,
@@ -138,15 +140,26 @@ export function OnlineGameBoard({
                 ? `${gameState.winner[0].name} の勝利!`
                 : `引き分け: ${gameState.winner.map((p) => p.name).join(", ")}`}
             </h2>
-            {isHost && (
+            {onlinePlayerCount < 2 ? (
+              <div className="mt-4">
+                <p className="text-slate-400 text-sm mb-3">
+                  他のプレイヤーが退出しました
+                </p>
+                <button
+                  onClick={onLeave}
+                  className="px-6 py-3 bg-slate-600 hover:bg-slate-500 rounded-xl font-medium transition-colors"
+                >
+                  ロビーに戻る
+                </button>
+              </div>
+            ) : isHost ? (
               <button
                 onClick={onNextGame}
                 className="mt-4 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-medium transition-colors"
               >
                 次のゲームを開始
               </button>
-            )}
-            {!isHost && (
+            ) : (
               <p className="mt-4 text-slate-400 text-sm">
                 ホストが次のゲームを開始するのを待っています...
               </p>

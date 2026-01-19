@@ -183,7 +183,7 @@ export function App() {
     console.log("mySlot:", state.mySlot);
 
     // Find the lowest slot online player to be the trigger
-    const onlinePlayers = roomPlayers.filter((p) => p.is_online !== false);
+    const onlinePlayers = roomPlayers.filter((p) => p.is_online === true);
     console.log("Online players:", onlinePlayers.map(p => p.slot));
     if (onlinePlayers.length === 0) {
       console.log("No online players, skipping auto-play");
@@ -198,20 +198,23 @@ export function App() {
     }
 
     // Check if any offline players need to reveal
-    const offlinePlayerSlots = roomPlayers
-      .filter((p) => p.is_online === false)
-      .map((p) => p.slot);
-    console.log("Offline player slots:", offlinePlayerSlots);
+    // A player is offline if: is_online !== true OR they don't exist in roomPlayers at all
+    const roomPlayerSlots = new Set(roomPlayers.map(p => p.slot));
+    const offlinePlayerSlots = state.gameState.waitingForPlayers.filter((slot) => {
+      const roomPlayer = roomPlayers.find(p => p.slot === slot);
+      // Offline if: not in room_players, or is_online !== true
+      return !roomPlayer || roomPlayer.is_online !== true;
+    });
+    console.log("Room player slots:", [...roomPlayerSlots]);
+    console.log("Offline/missing player slots:", offlinePlayerSlots);
 
-    const waitingOffline = state.gameState.waitingForPlayers.filter((slot) =>
-      offlinePlayerSlots.includes(slot)
-    );
-    console.log("Waiting offline players:", waitingOffline);
-
-    if (waitingOffline.length === 0) {
+    if (offlinePlayerSlots.length === 0) {
       console.log("No offline players waiting to reveal");
       return;
     }
+
+    const waitingOffline = offlinePlayerSlots;
+    console.log("Waiting offline players:", waitingOffline);
 
     console.log("Triggering auto-play for offline players:", waitingOffline);
 
@@ -317,16 +320,38 @@ export function App() {
   const handleNextGame = useCallback(async () => {
     if (state.type !== "playing") return;
 
-    const playerNames = state.gameState.players.map((p) => p.name);
-    const newState = await startNewGame(state.room.id, playerNames);
+    // Check if there are enough online players
+    const onlinePlayers = roomPlayers.filter(p => p.is_online === true);
+    console.log("handleNextGame - online players:", onlinePlayers.length);
+
+    if (onlinePlayers.length < 2) {
+      console.log("Not enough players, returning to lobby");
+      // Clean up and return to lobby
+      await leaveRoom(state.room.id);
+      setState({ type: "lobby" });
+      return;
+    }
+
+    const newState = await startNewGame(state.room.id);
+    console.log("handleNextGame - newState:", newState ? "success" : "null");
 
     if (newState) {
+      // Update mySlot based on new player order (offline players removed)
+      const newSlot = onlinePlayers
+        .sort((a, b) => a.slot - b.slot)
+        .findIndex(p => p.player_id === playerId);
+
       setState({
         ...state,
         gameState: newState,
+        mySlot: newSlot >= 0 ? newSlot : state.mySlot,
       });
+    } else {
+      // Failed to start new game (likely not enough players after server check)
+      console.log("startNewGame returned null, returning to lobby");
+      setState({ type: "lobby" });
     }
-  }, [state]);
+  }, [state, roomPlayers, playerId]);
 
   const handleLeave = useCallback(async () => {
     console.log("handleLeave called, state type:", state.type);
@@ -379,6 +404,7 @@ export function App() {
         gameState={state.gameState}
         isHost={state.room.host_id === playerId}
         mySlot={state.mySlot}
+        onlinePlayerCount={roomPlayers.filter(p => p.is_online === true).length}
         onSelectCard={handleSelectCard}
         onNextGame={handleNextGame}
         onLeave={handleLeave}

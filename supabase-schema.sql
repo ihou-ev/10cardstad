@@ -15,6 +15,7 @@ CREATE TABLE room_players (
   player_id VARCHAR(36) NOT NULL,
   player_name VARCHAR(50) NOT NULL,
   slot INTEGER NOT NULL CHECK (slot >= 0 AND slot <= 4),
+  is_online BOOLEAN DEFAULT TRUE,
   joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(room_id, slot),
   UNIQUE(room_id, player_id)
@@ -51,6 +52,10 @@ CREATE POLICY "Anyone can join rooms" ON room_players
 -- Allow anyone to leave rooms
 CREATE POLICY "Anyone can leave rooms" ON room_players
   FOR DELETE USING (true);
+
+-- Allow anyone to update players (for is_online status)
+CREATE POLICY "Anyone can update players" ON room_players
+  FOR UPDATE USING (true);
 
 -- Index for room code lookups
 CREATE INDEX idx_room_code ON game_rooms(room_code);
